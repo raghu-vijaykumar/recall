@@ -6,13 +6,12 @@ module.exports = {
     files: ["dist/electron/**/*", "dist/frontend/**/*"],
   },
   packagerConfig: {
-    asar: true,
+    asar: false,
     ignore: [
       /\.ts$/,
       /src$/,
       /tsconfig\.json$/,
       /\.git$/,
-      /node_modules$/,
       /\.vscode$/,
       /\.log$/,
       /backend\//,
@@ -39,10 +38,6 @@ module.exports = {
     },
   ],
   plugins: [
-    {
-      name: "@electron-forge/plugin-auto-unpack-natives",
-      config: {},
-    },
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
     new FusesPlugin({

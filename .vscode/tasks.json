@@ -45,6 +45,34 @@
         "panel": "new"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Clean, Rebuild, and Make",
+      "type": "shell",
+      "command": "npm run clean-rebuild-make",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Clean All, Rebuild, Make, and Run",
+      "type": "shell",
+      "command": "npm run full-clean-build-run",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
     }
   ]
 }

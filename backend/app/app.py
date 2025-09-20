@@ -35,7 +35,7 @@ app.add_middleware(
 # Mount static files directory for file serving
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     # Running in a PyInstaller bundle
-    static_dir = Path(sys._MEIPASS) / "app" / "static"
+    static_dir = Path(sys._MEIPASS) / "static"
 else:
     # Running in normal Python environment
     static_dir = Path(__file__).parent / "static"

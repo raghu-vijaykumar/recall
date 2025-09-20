@@ -1,16 +1,28 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, Menu, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, Menu, dialog, protocol } from "electron";
 import path from "node:path";
 import { spawn } from "child_process";
 import fs from "fs";
+import fsp from "fs/promises"; // Import fs.promises for async file operations
+import mime from "mime-types"; // Import mime-types for better MIME detection
+import log from 'electron-log'; // Import electron-log
+
+// Configure electron-log
+log.transports.file.level = 'info';
+log.transports.file.maxSize = 5 * 1024 * 1024; // 5MB
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+log.transports.file.fileName = 'main.log';
+
+// Set the log file path to a known location in user data
+log.transports.file.resolvePath = () => path.join(app.getPath('userData'), 'logs', 'main.log');
 
 // Handle uncaught exceptions and unhandled rejections to prevent Windows error dialogs
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  log.error('Uncaught Exception:', error);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
   process.exit(1);
 });
 
@@ -34,7 +46,7 @@ function setupDatabase() {
   const sourceDbPath = path.join(__dirname, '..', 'database', 'recall.db');
   if (fs.existsSync(sourceDbPath) && !fs.existsSync(dbPath)) {
     fs.copyFileSync(sourceDbPath, dbPath);
-    console.log('Database copied to user data directory');
+    log.info('Database copied to user data directory');
   }
 
   // Copy schema file
@@ -46,72 +58,90 @@ function setupDatabase() {
   return dbPath;
 }
 
-function startBackend() {
-  return new Promise((resolve, reject) => {
+function startBackend(port: number): Promise<number> {
+  return new Promise(async (resolve, reject) => {
     const dbPath = setupDatabase();
     const backendExecutablePath = path.join(__dirname, '..', 'backend', 'dist', 'recall-backend.exe');
 
-    console.log('Starting backend server...');
-    console.log('Database path:', dbPath);
-    console.log('Backend executable:', backendExecutablePath);
+    log.info(`Attempting to start backend server on port ${port}...`);
+    log.info('Database path:', dbPath);
+    log.info('Backend executable:', backendExecutablePath);
 
-    // Set environment variables for the backend
     const env = {
       ...process.env,
       DATABASE_PATH: dbPath,
+      PORT: port.toString(), // Pass the port to the backend
     };
 
-    // Start the PyInstaller-generated backend executable
     backendProcess = spawn(backendExecutablePath, [], {
       cwd: path.join(__dirname, '..', 'backend'),
       env: env,
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    // Handle backend output
     const checkReady = (output: string) => {
       if (output.includes('Application startup complete') && !backendReady) {
         backendReady = true;
-        console.log('Backend server is ready!');
-        resolve(true);
+        log.info(`Backend server is ready on port ${port}!`);
+        resolve(port);
       }
     };
 
     backendProcess.stdout.on('data', (data: Buffer) => {
       const output = data.toString();
-      console.log('Backend stdout:', output);
+      log.info('Backend stdout:', output);
       checkReady(output);
     });
 
     backendProcess.stderr.on('data', (data: Buffer) => {
       const output = data.toString();
-      console.log('Backend stderr:', output);
+      log.error('Backend stderr:', output);
+      if (output.includes('error while attempting to bind on address')) {
+        reject(new Error('Port in use'));
+      }
       checkReady(output);
     });
 
     backendProcess.on('close', (code: number) => {
-      console.log(`Backend process exited with code ${code}`);
+      log.info(`Backend process exited with code ${code}`);
       backendReady = false;
     });
 
     backendProcess.on('error', (error: Error) => {
-      console.error('Failed to start backend:', error);
+      log.error('Failed to start backend:', error);
       reject(error);
     });
 
-    // Timeout after 30 seconds
     setTimeout(() => {
       if (!backendReady) {
-        console.error('Backend startup timeout');
+        log.error('Backend startup timeout');
         reject(new Error('Backend startup timeout'));
       }
     }, 30000);
   });
 }
 
+async function findAvailablePortAndStartBackend(startPort: number, maxRetries: number): Promise<number> {
+  let currentPort = startPort;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await startBackend(currentPort);
+      return currentPort;
+    } catch (error: any) {
+      if (error.message === 'Port in use') {
+        log.warn(`Port ${currentPort} is in use, trying next port...`);
+        currentPort++;
+      } else {
+        throw error; // Re-throw other errors
+      }
+    }
+  }
+  throw new Error(`Failed to start backend after ${maxRetries} retries. All ports from ${startPort} to ${currentPort - 1} are in use.`);
+}
+
 function stopBackend() {
   if (backendProcess) {
-    console.log('Stopping backend server...');
+    log.info('Stopping backend server...');
     backendProcess.kill('SIGTERM');
 
     // Force kill after 5 seconds
@@ -129,16 +159,16 @@ const createWindow = () => {
     height: 700,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      webSecurity: false, // Disable web security for development
+      // webSecurity: false, // Disable web security for development - Re-enable for production
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  if (app.isPackaged) {
-    win.loadFile(path.join(__dirname, "..", "frontend", "index.html"));
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) {
+    win.loadURL(`app://./index.html`);
   } else {
-    win.loadURL("http://localhost:3000");
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
     win.webContents.openDevTools();
   }
 
@@ -363,12 +393,35 @@ ipcMain.handle("dark-mode:get", () => {
 });
 
 app.whenReady().then(async () => {
+  // Register a custom protocol to serve frontend files with correct MIME types
+  protocol.handle('app', async (request) => {
+    let filePath = path.join(__dirname, '..', 'dist', 'frontend', request.url.slice('app://./'.length));
+    if (request.url === 'app://./index.html') {
+      filePath = path.join(__dirname, '..', 'dist', 'frontend', 'index.html');
+    }
+
+    try {
+      const fileContent = await fsp.readFile(filePath);
+      const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+      // Create a new ArrayBuffer from the Buffer to avoid SharedArrayBuffer issues
+      const arrayBuffer = new Uint8Array(fileContent).buffer;
+      return new Response(arrayBuffer, {
+        headers: {
+          'Content-Type': mimeType,
+        },
+      });
+    } catch (error) {
+      log.error(`Failed to load file: ${filePath}`, error);
+      return new Response('File not found', { status: 404 });
+    }
+  });
+
   ipcMain.handle("ping", () => "pong");
 
   try {
     // Start the backend server
-    console.log('Initializing Recall application...');
-    await startBackend();
+    log.info('Initializing Recall application...');
+    const backendPort = await findAvailablePortAndStartBackend(8000, 3); // Try ports 8000, 8001, 8002
 
     // Create the main window after backend is ready
     createWindow();
@@ -378,7 +431,7 @@ app.whenReady().then(async () => {
     });
 
   } catch (error) {
-    console.error('Failed to start backend:', error);
+    log.error('Failed to start backend:', error);
     app.quit();
   }
 });
@@ -425,6 +478,6 @@ async function openFolderDialog() {
       });
     }
   } catch (err) {
-    console.error('Error opening folder dialog:', err);
+    log.error('Error opening folder dialog:', err);
   }
 }

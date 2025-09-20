@@ -13,6 +13,8 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "clean-rebuild-make": "rimraf backend/dist && rimraf backend/build && rimraf dist && npm install && npm run build && electron-forge make --verbose",
+    "full-clean-build-run": "call .\\scripts\\clean-rebuild-run.bat",
     "dev:frontend": "vite",
     "dev:electron": "npm run build:electron && electron-forge start",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\""
@@ -39,9 +41,13 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "typescript": "^5.9.2",
-    "vite": "^7.1.6"
+    "vite": "^7.1.6",
+    "rimraf": "^6.0.0"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "@types/mime-types": "^3.0.1",
+    "electron-squirrel-startup": "^1.0.1",
+    "mime-types": "^3.0.1",
+    "electron-log": "^5.1.6"
   }
 }
