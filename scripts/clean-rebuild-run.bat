@@ -9,6 +9,14 @@ if %ERRORLEVEL% NEQ 0 echo recall.exe not running
 taskkill /IM electron.exe /F >nul 2>&1
 if %ERRORLEVEL% NEQ 0 echo electron.exe not running
 
+:: Kill processes on ports 8000,8001,8002
+for %%p in (8000 8001 8002) do (
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do (
+        taskkill /PID %%a /F >nul 2>&1
+        echo Killed process %%a on port %%p
+    )
+)
+
 :: Reset errorlevel
 ver >nul
 

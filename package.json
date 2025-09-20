@@ -10,7 +10,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:backend-pyinstaller": "cd backend && python -m venv .venv-build && .\\.venv-build\\Scripts\\python.exe -m pip install pyinstaller && .\\.venv-build\\Scripts\\python.exe -m pip install -r requirements.txt && .\\.venv-build\\Scripts\\python.exe -m PyInstaller --onefile --name recall-backend main.py --hidden-import uvicorn --collect-all uvicorn --add-data \"app/static;app/static\"",
     "build": "npm run build:frontend && npm run build:electron && npm run build:backend-pyinstaller && copyfiles -u 1 \"database/**/*\" dist",
-    "start": "electron-forge start",
+    "start": "call .\\scripts\\start-dev.bat",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "clean-rebuild-make": "rimraf backend/dist && rimraf backend/build && rimraf dist && npm install && npm run build && electron-forge make --verbose",
