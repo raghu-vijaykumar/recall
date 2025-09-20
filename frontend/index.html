@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: http://127.0.0.1:8000 blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' http://127.0.0.1:8000 https://cdnjs.cloudflare.com; img-src 'self' data: https: http://127.0.0.1:8000; font-src 'self' https: data:; worker-src 'self' blob: https://cdnjs.cloudflare.com;"
+    />
+    <meta
+      http-equiv="X-Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: http://127.0.0.1:8000 blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; connect-src 'self' http://127.0.0.1:8000 https://cdnjs.cloudflare.com; img-src 'self' data: https: http://127.0.0.1:8000; font-src 'self' https: data:; worker-src 'self' blob: https://cdnjs.cloudflare.com;"
+    />
+    <title>Recall - Study App</title>
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main Content -->
+      <main id="main">
+        <!-- Include component templates -->
+        <div id="workspaces-container"></div>
+        <div id="files-container"></div>
+        <div id="quiz-container"></div>
+        <div id="progress-container"></div>
+      </main>
+    </div>
+
+    <!-- Modals container -->
+    <div id="modals-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script type="module" src="./src/index.tsx"></script>
+  </body>
+</html>

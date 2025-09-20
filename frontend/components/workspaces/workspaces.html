@@ -1,0 +1,37 @@
+<!-- Workspaces Tab -->
+<div id="workspaces-tab" class="tab-content active">
+  <div class="workspace-header">
+    <h2>Your Workspaces</h2>
+    <button id="create-workspace-btn" class="btn-primary">
+      Create Workspace
+    </button>
+  </div>
+  <div id="workspaces-grid" class="workspace-grid">
+    <!-- Workspace cards will be populated here -->
+  </div>
+</div>
+
+<!-- Create Workspace Modal -->
+<div id="create-workspace-modal" class="modal">
+  <div class="modal-content">
+    <h3>Create New Workspace</h3>
+    <form id="create-workspace-form">
+      <input
+        type="text"
+        id="workspace-name"
+        placeholder="Workspace Name"
+        required
+      />
+      <textarea
+        id="workspace-description"
+        placeholder="Description (optional)"
+      ></textarea>
+      <div class="modal-actions">
+        <button type="button" id="cancel-create" class="btn-secondary">
+          Cancel
+        </button>
+        <button type="submit" class="btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>

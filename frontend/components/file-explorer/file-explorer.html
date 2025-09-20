@@ -1,0 +1,71 @@
+<!-- Files Tab -->
+<div id="files-tab" class="tab-content">
+  <div class="files-container">
+    <!-- File Explorer Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h3>EXPLORER</h3>
+        <div class="sidebar-actions">
+          <button
+            id="scan-folder-btn"
+            class="sidebar-btn"
+            title="Scan folder for new files"
+          >
+            🔄
+          </button>
+          <button id="upload-file-btn" class="sidebar-btn" title="New File">
+            ➕
+          </button>
+        </div>
+      </div>
+      <div id="file-tree" class="file-tree">
+        <!-- File tree will be populated here -->
+      </div>
+    </div>
+
+    <!-- Main Editor Area -->
+    <div class="main-editor">
+      <!-- Tab Bar -->
+      <div id="tab-bar" class="tab-bar">
+        <!-- File tabs will be populated here -->
+      </div>
+
+      <!-- Editor Container -->
+      <div id="editor-container" class="editor-container">
+        <div id="monaco-editor" class="monaco-editor"></div>
+        <div id="welcome-screen" class="welcome-screen">
+          <div class="welcome-content">
+            <h2>Welcome to Recall</h2>
+            <p>Select a file from the explorer to start editing</p>
+            <div class="welcome-actions">
+              <button id="create-first-file-btn" class="btn-primary">
+                Create New File
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create File Modal -->
+<div id="create-file-modal" class="modal">
+  <div class="modal-content">
+    <h3>Create New File</h3>
+    <form id="create-file-form">
+      <input
+        type="text"
+        id="file-name"
+        placeholder="filename.ext (e.g., script.py, notes.md)"
+        required
+      />
+      <div class="modal-actions">
+        <button type="button" id="cancel-file-create" class="btn-secondary">
+          Cancel
+        </button>
+        <button type="submit" class="btn-primary">Create File</button>
+      </div>
+    </form>
+  </div>
+</div>
