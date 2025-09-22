@@ -71,6 +71,14 @@ export interface Tab {
   isActive: boolean;
 }
 
+// Folder tree types
+export interface FolderTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FolderTreeNode[];
+}
+
 // Menu event types
 export interface MenuEvent {
   type: string;

@@ -40,4 +40,6 @@ contextBridge.exposeInMainWorld("menuEvents", {
 
 contextBridge.exposeInMainWorld("electronAPI", {
   readHtmlFile: (filePath: string) => ipcRenderer.invoke("read-html-file", filePath),
+  getFolderTree: (folderPath: string) => ipcRenderer.invoke("get-folder-tree", folderPath),
+  readFileContent: (filePath: string) => ipcRenderer.invoke("read-file-content", filePath),
 });

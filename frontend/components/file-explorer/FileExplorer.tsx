@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE } from '../../core/api.js';
-import { File, Tab, MonacoEditor } from '../../core/types.js';
+import { File, Tab, MonacoEditor, FolderTreeNode, Workspace } from '../../core/types.js';
 import { getFileIcon, getFileTypeFromName, getDefaultContentForFile, showModal, hideModal } from '../../shared/utils.js';
 
 interface FileExplorerProps {
@@ -8,7 +8,9 @@ interface FileExplorerProps {
 }
 
 const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
-  const [files, setFiles] = useState<File[]>([]);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [openFiles, setOpenFiles] = useState<Tab[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -17,36 +19,118 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
 
   useEffect(() => {
     if (currentWorkspaceId) {
-      loadFiles();
+      loadWorkspace();
     }
   }, [currentWorkspaceId]);
+
+  useEffect(() => {
+    if (workspace?.folder_path) {
+      loadFolderTree();
+    }
+  }, [workspace]);
 
   useEffect(() => {
     initializeMonacoEditor();
   }, []);
 
-  const loadFiles = async () => {
+  const loadWorkspace = async () => {
     if (!currentWorkspaceId) return;
 
+    console.log('Loading workspace:', currentWorkspaceId);
     try {
-      const response = await fetch(`${API_BASE}/files/workspace/${currentWorkspaceId}`);
-      const files = await response.json();
-      setFiles(files);
+      const response = await fetch(`${API_BASE}/workspaces/${currentWorkspaceId}`);
+      const workspaceData = await response.json();
+      console.log('Workspace data:', workspaceData);
+      setWorkspace(workspaceData);
     } catch (error) {
-      console.error('Failed to load files:', error);
+      console.error('Failed to load workspace:', error);
     }
   };
 
-  const loadFileContent = async (fileId: number) => {
+  const loadFolderTree = async () => {
+    if (!workspace?.folder_path) {
+      console.log('No folder_path in workspace:', workspace);
+      return;
+    }
+
+    console.log('Loading folder tree for:', workspace.folder_path);
     try {
-      const response = await fetch(`${API_BASE}/files/${fileId}/content`);
-      const data = await response.json();
+      const tree = await (window as any).electronAPI.getFolderTree(workspace.folder_path);
+      console.log('Folder tree loaded:', tree);
+      setFolderTree(tree);
+    } catch (error) {
+      console.error('Failed to load folder tree:', error);
+    }
+  };
+
+  const toggleDirectory = (path: string) => {
+    setExpandedDirs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(path)) {
+        newSet.delete(path);
+      } else {
+        newSet.add(path);
+      }
+      return newSet;
+    });
+  };
+
+  const openFile = async (node: FolderTreeNode) => {
+    if (!workspace?.folder_path) return;
+
+    const fullPath = `${workspace.folder_path}/${node.path}`;
+
+    try {
+      const content = await (window as any).electronAPI.readFileContent(fullPath);
+
+      // Create a temporary file object for the tab
+      const tempFile: File = {
+        id: Date.now(), // Temporary ID
+        name: node.name,
+        path: node.path,
+        file_type: getFileTypeFromName(node.name),
+        size: content.length,
+        workspace_id: currentWorkspaceId!,
+        content: content
+      };
+
+      const existingTab = openFiles.find(f => f.file.path === node.path);
+      if (existingTab) {
+        setActiveFileId(existingTab.id);
+        if (monacoEditorRef.current) {
+          monacoEditorRef.current.setValue(content);
+        }
+        return;
+      }
+
+      const tab: Tab = {
+        id: tempFile.id,
+        name: tempFile.name,
+        file: tempFile,
+        isActive: false
+      };
+
+      setOpenFiles(prev => [...prev, tab]);
+      setActiveFileId(tempFile.id);
 
       if (monacoEditorRef.current) {
-        monacoEditorRef.current.setValue(data.content || '');
+        monacoEditorRef.current.setValue(content);
       }
     } catch (error) {
-      console.error('Failed to load file content:', error);
+      console.error('Failed to open file:', error);
+      alert('Failed to open file');
+    }
+  };
+
+  const closeTab = (fileId: number) => {
+    setOpenFiles(prev => prev.filter(f => f.id !== fileId));
+    if (activeFileId === fileId) {
+      const remainingTabs = openFiles.filter(f => f.id !== fileId);
+      if (remainingTabs.length > 0) {
+        setActiveFileId(remainingTabs[remainingTabs.length - 1].id);
+      } else {
+        setActiveFileId(null);
+      }
     }
   };
 
@@ -73,7 +157,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
       if (response.ok) {
         setShowCreateModal(false);
         setFileName('');
-        await loadFiles();
+        // Refresh folder tree after creating file
+        if (workspace?.folder_path) {
+          loadFolderTree();
+        }
       } else {
         const error = await response.text();
         alert(`Failed to create file: ${error}`);
@@ -84,95 +171,9 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
     }
   };
 
-  const openFileInTab = async (file: File) => {
-    const existingTab = openFiles.find(f => f.id === file.id);
-    if (existingTab) {
-      setActiveFileId(file.id);
-      await loadFileContent(file.id);
-      return;
-    }
-
-    const tab: Tab = {
-      id: file.id,
-      name: file.name,
-      file: file,
-      isActive: false
-    };
-    setOpenFiles(prev => [...prev, tab]);
-    setActiveFileId(file.id);
-    await loadFileContent(file.id);
-  };
-
-  const closeTab = (fileId: number) => {
-    setOpenFiles(prev => prev.filter(f => f.id !== fileId));
-    if (activeFileId === fileId) {
-      const remainingTabs = openFiles.filter(f => f.id !== fileId);
-      if (remainingTabs.length > 0) {
-        setActiveFileId(remainingTabs[remainingTabs.length - 1].id);
-      } else {
-        setActiveFileId(null);
-      }
-    }
-  };
-
-  const saveCurrentFile = async () => {
-    if (!currentWorkspaceId || !monacoEditorRef.current) return;
-
-    const content = monacoEditorRef.current.getValue();
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const filename = `file_${timestamp}.txt`;
-
-    const fileData = {
-      name: filename,
-      path: filename,
-      file_type: getFileTypeFromName(filename),
-      size: content.length,
-      workspace_id: currentWorkspaceId,
-      content: content
-    };
-
-    try {
-      const response = await fetch(`${API_BASE}/files/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fileData)
-      });
-
-      if (response.ok) {
-        alert(`File saved as: ${filename}`);
-        await loadFiles();
-      } else {
-        const error = await response.text();
-        alert(`Failed to save file: ${error}`);
-      }
-    } catch (error) {
-      console.error('Failed to save file:', error);
-      alert('Failed to save file');
-    }
-  };
-
-  const scanCurrentWorkspaceFolder = async () => {
+  const scanCurrentWorkspaceFolder = async (showAlerts: boolean = true) => {
     if (!currentWorkspaceId) {
-      alert('Please select a workspace first');
-      return;
-    }
-
-    try {
-      const workspaceResponse = await fetch(`${API_BASE}/workspaces/${currentWorkspaceId}`);
-      if (workspaceResponse.ok) {
-        const workspace = await workspaceResponse.json();
-
-        if (!workspace.folder_path) {
-          alert('This workspace is not linked to a folder. To scan files, first create a workspace from a folder using File → Open Folder.');
-          return;
-        }
-      } else {
-        alert('Could not verify workspace information. Please try again.');
-        return;
-      }
-    } catch (error) {
-      console.error('Failed to check workspace:', error);
-      alert('Failed to check workspace information');
+      if (showAlerts) alert('Please select a workspace first');
       return;
     }
 
@@ -183,15 +184,18 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
 
       if (response.ok) {
         const scanResult = await response.json();
-        alert(`Folder scan completed!\nFound and added ${scanResult.files_created} new files.`);
-        await loadFiles();
+        if (showAlerts) alert(`Folder scan completed!\nFound and added ${scanResult.files_created} new files.`);
+        // Refresh folder tree after scanning
+        if (workspace?.folder_path) {
+          loadFolderTree();
+        }
       } else {
         const error = await response.text();
-        alert(`Failed to scan folder: ${error}`);
+        if (showAlerts) alert(`Failed to scan folder: ${error}`);
       }
     } catch (error) {
       console.error('Failed to scan folder:', error);
-      alert('Failed to scan folder');
+      if (showAlerts) alert('Failed to scan folder');
     }
   };
 
@@ -228,8 +232,37 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
     checkMonaco();
   };
 
+  const renderTreeNode = (node: FolderTreeNode, level: number = 0): React.ReactNode => {
+    const isExpanded = expandedDirs.has(node.path);
+    const isActive = openFiles.some(tab => tab.file.path === node.path);
+
+    return (
+      <div key={node.path}>
+        <div
+          className={`tree-item ${isActive ? 'active' : ''}`}
+          style={{ paddingLeft: `${level * 16 + 8}px` }}
+          onClick={() => node.type === 'directory' ? toggleDirectory(node.path) : openFile(node)}
+        >
+          {node.type === 'directory' ? (
+            <span className="tree-icon">
+              {isExpanded ? '📂' : '📁'}
+            </span>
+          ) : (
+            <span className="tree-icon">{getFileIcon(node.name)}</span>
+          )}
+          <span className="tree-name">{node.name}</span>
+        </div>
+        {node.type === 'directory' && isExpanded && node.children && (
+          <div>
+            {node.children.map(child => renderTreeNode(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div id="files-tab" className="tab-content">
+    <div id="files-tab" className="tab-content active">
       <div className="files-container">
         <div className="sidebar">
           <div className="sidebar-header">
@@ -237,31 +270,41 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
             <div className="sidebar-actions">
               <button
                 className="sidebar-btn"
-                title="Scan folder for new files"
-                onClick={scanCurrentWorkspaceFolder}
+                title="Refresh folder tree"
+                onClick={() => loadFolderTree()}
               >
                 🔄
               </button>
               <button
                 className="sidebar-btn"
-                title="New File"
-                onClick={() => setShowCreateModal(true)}
+                title="Scan folder for new files"
+                onClick={() => scanCurrentWorkspaceFolder(true)}
               >
-                ➕
+                📂
               </button>
             </div>
           </div>
           <div className="file-tree">
-            {files.map(file => (
-              <div
-                key={file.id}
-                className={`file-item ${activeFileId === file.id ? 'active' : ''}`}
-                onClick={() => openFileInTab(file)}
-              >
-                <span className="file-icon">{getFileIcon(file.name)}</span>
-                <span className="file-name">{file.name}</span>
+            {workspace?.folder_path ? (
+              folderTree.length > 0 ? (
+                folderTree.map(node => renderTreeNode(node))
+              ) : (
+                <div className="empty-tree">
+                  <p>No files found in workspace folder</p>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => loadFolderTree()}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )
+            ) : (
+              <div className="empty-tree">
+                <p>No folder linked to this workspace</p>
+                <p>Use "File → Open Folder" to link a folder</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 

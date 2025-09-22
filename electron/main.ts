@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, Menu, dialog, protocol } from "electron";
 import path from "node:path";
+import os from "os";
 import { spawn } from "child_process";
 import fs from "fs";
 import fsp from "fs/promises"; // Import fs.promises for async file operations
@@ -32,29 +33,15 @@ let backendReady = false;
 
 // Backend management functions
 function setupDatabase() {
-  const tempDbDir = path.join(app.getPath('temp'), 'database');
-  const dbDir = tempDbDir; // Use temp directory for database
+  const dbDir = path.join(os.homedir(), '.recall');
   const dbPath = path.join(dbDir, 'recall.db');
-  const schemaPath = path.join(dbDir, 'schema.sql');
 
   // Create database directory if it doesn't exist
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  // Copy database file if it doesn't exist
-  const sourceDbPath = path.join(__dirname, '..', 'database', 'recall.db');
-  if (fs.existsSync(sourceDbPath) && !fs.existsSync(dbPath)) {
-    fs.copyFileSync(sourceDbPath, dbPath);
-    log.info('Database copied to user data directory');
-  }
-
-  // Copy schema file
-  const sourceSchemaPath = path.join(__dirname, '..', 'database', 'schema.sql');
-  if (fs.existsSync(sourceSchemaPath)) {
-    fs.copyFileSync(sourceSchemaPath, schemaPath);
-  }
-
+  // Database will be created on the fly by the backend if it doesn't exist
   return dbPath;
 }
 
@@ -418,7 +405,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("ping", () => "pong");
 
-  ipcMain.handle("read-html-file", async (event, componentPath: string) => {
+ipcMain.handle("read-html-file", async (event, componentPath: string) => {
     try {
       // Resolve the path relative to the frontend dist directory
       const fullPath = path.join(__dirname, '..', 'dist', 'frontend', 'components', componentPath);
@@ -427,6 +414,77 @@ app.whenReady().then(async () => {
     } catch (error) {
       log.error(`Failed to read HTML file: ${componentPath}`, error);
       throw new Error(`Failed to read HTML file: ${componentPath}`);
+    }
+  });
+
+ipcMain.handle("get-folder-tree", async (event, folderPath: string) => {
+    try {
+      const buildTree = async (dirPath: string, relativePath: string = ""): Promise<any> => {
+        const items: any[] = [];
+
+        try {
+          const entries = await fsp.readdir(dirPath, { withFileTypes: true });
+
+          for (const entry of entries) {
+            // Skip hidden files/directories and common unwanted ones
+            if (entry.name.startsWith('.') ||
+                entry.name === 'node_modules' ||
+                entry.name === '__pycache__' ||
+                entry.name === '.git') {
+              continue;
+            }
+
+            const fullPath = path.join(dirPath, entry.name);
+            const itemRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+            if (entry.isDirectory()) {
+              const children = await buildTree(fullPath, itemRelativePath);
+              items.push({
+                name: entry.name,
+                path: itemRelativePath,
+                type: 'directory',
+                children: children
+              });
+            } else {
+              // Only include text-based files
+              const ext = path.extname(entry.name).toLowerCase();
+              const textExtensions = ['.txt', '.md', '.markdown', '.py', '.js', '.ts', '.html', '.css', '.json', '.xml', '.yml', '.yaml'];
+              if (textExtensions.includes(ext) || !ext) {
+                items.push({
+                  name: entry.name,
+                  path: itemRelativePath,
+                  type: 'file'
+                });
+              }
+            }
+          }
+        } catch (error) {
+          log.error(`Error reading directory ${dirPath}:`, error);
+        }
+
+        // Sort: directories first, then files, alphabetically
+        return items.sort((a, b) => {
+          if (a.type !== b.type) {
+            return a.type === 'directory' ? -1 : 1;
+          }
+          return a.name.localeCompare(b.name);
+        });
+      };
+
+      return await buildTree(folderPath);
+    } catch (error) {
+      log.error(`Failed to get folder tree for ${folderPath}:`, error);
+      throw new Error(`Failed to get folder tree: ${error}`);
+    }
+  });
+
+ipcMain.handle("read-file-content", async (event, filePath: string) => {
+    try {
+      const content = await fsp.readFile(filePath, 'utf-8');
+      return content;
+    } catch (error) {
+      log.error(`Failed to read file ${filePath}:`, error);
+      throw new Error(`Failed to read file: ${error}`);
     }
   });
 

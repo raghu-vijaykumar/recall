@@ -17,9 +17,12 @@ logger = logging.getLogger(__name__)
 
 class DatabaseService:
     def __init__(self, db_path: str = None):
-        # Use environment variable if provided, otherwise default
+        # Use environment variable if provided, otherwise default to user data
         if db_path is None:
-            db_path = os.getenv("DATABASE_PATH", "recall.db")
+            db_path = os.getenv(
+                "DATABASE_PATH",
+                os.path.join(os.path.expanduser("~"), ".recall", "recall.db"),
+            )
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

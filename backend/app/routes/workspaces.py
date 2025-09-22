@@ -20,7 +20,7 @@ router = APIRouter()
 
 # Dependency to get workspace service
 def get_workspace_service() -> WorkspaceService:
-    db_service = DatabaseService("database/recall.db")
+    db_service = DatabaseService()
     return WorkspaceService(db_service)
 
 

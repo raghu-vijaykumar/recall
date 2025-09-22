@@ -42,6 +42,8 @@ const App: React.FC = () => {
         console.log('Folder selected:', folderInfo);
         setFolderToCreateWorkspace(folderInfo);
         setCurrentTab('workspaces'); // Switch to workspaces tab to show creation
+        setShowCreateWorkspaceModal(true); // Automatically show create modal
+        console.log('Modal should now be visible');
       });
     }
 

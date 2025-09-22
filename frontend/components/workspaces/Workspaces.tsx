@@ -13,11 +13,6 @@ interface Workspace {
 interface WorkspacesProps {
   showCreateModal: boolean;
   setShowCreateModal: React.Dispatch<React.SetStateAction<boolean>>;
-}
-
-interface WorkspacesProps {
-  showCreateModal: boolean;
-  setShowCreateModal: React.Dispatch<React.SetStateAction<boolean>>;
   folderToCreate: { path: string; name: string } | null;
   setFolderToCreate: React.Dispatch<React.SetStateAction<{ path: string; name: string } | null>>;
 }
@@ -31,31 +26,27 @@ const Workspaces: React.FC<WorkspacesProps> = ({ showCreateModal, setShowCreateM
     loadWorkspaces();
   }, []);
 
+  // Update form data when folderToCreate changes
   useEffect(() => {
     if (folderToCreate) {
-      // Automatically create workspace if folderToCreate is set
-      const createAutoWorkspace = async () => {
-        try {
-          const response = await fetch(`${API_BASE}/workspaces/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: folderToCreate.name, description: `Workspace for folder: ${folderToCreate.path}`, folder_path: folderToCreate.path })
-          });
-
-          if (response.ok) {
-            console.log('Workspace created automatically for folder:', folderToCreate.name);
-            await loadWorkspaces();
-            setFolderToCreate(null); // Clear the folderToCreate after creation
-          } else {
-            console.error('Failed to create automatic workspace, status:', response.status);
-          }
-        } catch (error) {
-          console.error('Failed to create automatic workspace - network error:', error);
-        }
-      };
-      createAutoWorkspace();
+      console.log('Setting form data with folder name:', folderToCreate.name);
+      setFormData({ name: folderToCreate.name, description: '' });
     }
-  }, [folderToCreate, setFolderToCreate]);
+  }, [folderToCreate]);
+
+  // Auto-submit form when folder is selected and modal is shown
+  useEffect(() => {
+    if (showCreateModal && folderToCreate && formData.name) {
+      console.log('Auto-submitting form for folder:', folderToCreate.name);
+      // Auto-submit the form
+      const form = document.getElementById('create-workspace-form') as HTMLFormElement;
+      if (form) {
+        form.requestSubmit();
+      }
+    }
+  }, [showCreateModal, folderToCreate, formData.name]);
+
+
 
   const loadWorkspaces = async () => {
     try {
@@ -86,6 +77,7 @@ const Workspaces: React.FC<WorkspacesProps> = ({ showCreateModal, setShowCreateM
       if (response.ok) {
         setShowCreateModal(false);
         setFormData({ name: '', description: '' });
+        setFolderToCreate(null); // Clear the folder after successful creation
         await loadWorkspaces();
       } else {
         console.error('Failed to create workspace, status:', response.status);
@@ -151,38 +143,42 @@ const Workspaces: React.FC<WorkspacesProps> = ({ showCreateModal, setShowCreateM
         ))}
       </div>
 
-      {showCreateModal && (
-        <div id="create-workspace-modal" className="modal">
-          <div className="modal-content">
-            <h3>Create New Workspace</h3>
-            <form id="create-workspace-form" onSubmit={handleCreateWorkspace}>
-              <input
-                type="text"
-                id="workspace-name"
-                placeholder="Workspace Name"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-              <textarea
-                id="workspace-description"
-                placeholder="Description (optional)"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-              <div className="modal-actions">
-                <button type="button" id="cancel-create" className="btn-secondary" onClick={() => {
-                  setShowCreateModal(false);
-                  setFormData({ name: '', description: '' });
-                }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">Create</button>
-              </div>
-            </form>
+      {showCreateModal && (() => {
+        console.log('Modal should be visible, showCreateModal:', showCreateModal, 'folderToCreate:', folderToCreate);
+        return (
+          <div id="create-workspace-modal" className="modal">
+            <div className="modal-content">
+              <h3>Create New Workspace</h3>
+              <form id="create-workspace-form" onSubmit={handleCreateWorkspace}>
+                <input
+                  type="text"
+                  id="workspace-name"
+                  placeholder="Workspace Name"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+                <textarea
+                  id="workspace-description"
+                  placeholder="Description (optional)"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+                <div className="modal-actions">
+                  <button type="button" id="cancel-create" className="btn-secondary" onClick={() => {
+                    setShowCreateModal(false);
+                    setFormData({ name: '', description: '' });
+                    setFolderToCreate(null); // Clear the folder when canceling
+                  }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">Create</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

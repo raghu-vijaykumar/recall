@@ -60,8 +60,8 @@ const Quiz: React.FC<QuizProps> = ({ currentWorkspaceId }) => {
     setShowResult(false);
   };
 
-  return (
-    <div id="quiz-tab" className="tab-content">
+    return (
+    <div id="quiz-tab" className="tab-content active">
       <div className="quiz-header">
         <h2>Quiz Time</h2>
         <button

@@ -47,7 +47,7 @@ const Progress: React.FC<ProgressProps> = ({ currentWorkspaceId }) => {
 
   if (loading) {
     return (
-      <div id="progress-tab" className="tab-content">
+      <div id="progress-tab" className="tab-content active">
         <div className="progress-header">
           <h2>Your Progress</h2>
         </div>
@@ -60,7 +60,7 @@ const Progress: React.FC<ProgressProps> = ({ currentWorkspaceId }) => {
 
   if (!stats) {
     return (
-      <div id="progress-tab" className="tab-content">
+      <div id="progress-tab" className="tab-content active">
         <div className="progress-header">
           <h2>Your Progress</h2>
         </div>
@@ -91,7 +91,7 @@ const Progress: React.FC<ProgressProps> = ({ currentWorkspaceId }) => {
   const progressPercentage = calculateProgressPercentage(stats);
 
   return (
-    <div id="progress-tab" className="tab-content">
+    <div id="progress-tab" className="tab-content active">
       <div className="progress-header">
         <h2>Your Progress</h2>
       </div>
