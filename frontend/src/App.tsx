@@ -1,10 +1,10 @@
 /// <reference types="../../electron/preload" />
 import React, { useState, useEffect } from 'react';
 import Workspaces from '../components/workspaces/Workspaces';
-// TODO: Import other components when converted
-// import FileExplorer from './components/file-explorer/FileExplorer';
-// import Quiz from './components/quiz/Quiz';
-// import Progress from './components/progress/Progress';
+// Import migrated components
+import FileExplorer from '../components/file-explorer/FileExplorer';
+import Quiz from '../components/quiz/Quiz';
+import Progress from '../components/progress/Progress';
 
 const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState('workspaces');
@@ -80,11 +80,11 @@ const App: React.FC = () => {
           setFolderToCreate={setFolderToCreateWorkspace}
         />;
       case 'files':
-        return <div>Files Tab - Coming Soon</div>; // TODO: FileExplorer component
+        return <FileExplorer currentWorkspaceId={currentWorkspaceId} />;
       case 'quiz':
-        return <div>Quiz Tab - Coming Soon</div>; // TODO: Quiz component
+        return <Quiz currentWorkspaceId={currentWorkspaceId} />;
       case 'progress':
-        return <div>Progress Tab - Coming Soon</div>; // TODO: Progress component
+        return <Progress currentWorkspaceId={currentWorkspaceId} />;
       default:
         return <Workspaces
           showCreateModal={showCreateWorkspaceModal}

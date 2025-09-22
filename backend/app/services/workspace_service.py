@@ -5,6 +5,7 @@ Workspace service for managing study workspaces
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import json
+import logging
 
 from app.models.workspace import (
     Workspace,
@@ -14,10 +15,19 @@ from app.models.workspace import (
 )
 from app.services.database import DatabaseService
 
+logger = logging.getLogger(__name__)
+
 
 class WorkspaceService:
     def __init__(self, db_service: DatabaseService):
         self.db = db_service
+        logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     def create_workspace(self, workspace_data: WorkspaceCreate) -> Workspace:
         """Create a new workspace"""
@@ -93,8 +103,24 @@ class WorkspaceService:
 
     def get_all_workspaces(self) -> List[Workspace]:
         """Get all workspaces with stats"""
-        workspaces_data = self.db.get_all("workspaces")
-        return [self.get_workspace(w["id"]) for w in workspaces_data]
+        logger.debug("Attempting to retrieve all workspaces.")
+        try:
+            workspaces_data = self.db.get_all("workspaces")
+            logger.debug(f"Retrieved {len(workspaces_data)} raw workspaces.")
+            workspaces = []
+            for w in workspaces_data:
+                try:
+                    workspace = self.get_workspace(w["id"])
+                    if workspace:
+                        workspaces.append(workspace)
+                except Exception as e:
+                    logger.error(
+                        f"Error getting detailed workspace for ID {w['id']}: {e}"
+                    )
+            return workspaces
+        except Exception as e:
+            logger.error(f"Error retrieving all workspaces: {e}")
+            raise
 
     def update_workspace(
         self, workspace_id: int, update_data: WorkspaceUpdate

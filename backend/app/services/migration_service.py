@@ -6,6 +6,7 @@ Similar to Liquibase but implemented in Python for SQLite
 import os
 import sqlite3
 import logging
+import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -16,12 +17,17 @@ logger = logging.getLogger(__name__)
 class MigrationService:
     def __init__(self, db_path: str, migrations_dir: str = None):
         self.db_path = Path(db_path)
-        self.migrations_dir = (
-            Path(migrations_dir)
-            if migrations_dir
-            else Path(__file__).parent.parent.parent / "migrations"
-        )
+        if migrations_dir:
+            self.migrations_dir = Path(migrations_dir)
+        elif getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            # Running in a PyInstaller bundle
+            self.migrations_dir = Path(sys._MEIPASS) / "migrations"
+        else:
+            # Running in development
+            self.migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+
         self.migrations_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Migrations directory set to: {self.migrations_dir}")
         self._init_migration_table()
 
     def _init_migration_table(self):
@@ -93,8 +99,9 @@ class MigrationService:
         migration_files = self._get_migration_files()
 
         if not migration_files:
-            logger.info("No migration files found")
+            logger.info(f"No migration files found in {self.migrations_dir}")
             return True
+        logger.debug(f"Found migration files: {[f.name for f in migration_files]}")
 
         applied = self.get_applied_migrations()
         pending = [f for f in migration_files if f.stem not in applied]

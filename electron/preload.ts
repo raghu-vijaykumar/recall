@@ -37,3 +37,7 @@ contextBridge.exposeInMainWorld("menuEvents", {
     ipcRenderer.off(channel, callback);
   }
 });
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  readHtmlFile: (filePath: string) => ipcRenderer.invoke("read-html-file", filePath),
+});

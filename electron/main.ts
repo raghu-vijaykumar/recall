@@ -32,8 +32,8 @@ let backendReady = false;
 
 // Backend management functions
 function setupDatabase() {
-  const userDataPath = app.getPath('userData');
-  const dbDir = path.join(userDataPath, 'database');
+  const tempDbDir = path.join(app.getPath('temp'), 'database');
+  const dbDir = tempDbDir; // Use temp directory for database
   const dbPath = path.join(dbDir, 'recall.db');
   const schemaPath = path.join(dbDir, 'schema.sql');
 
@@ -395,9 +395,9 @@ ipcMain.handle("dark-mode:get", () => {
 app.whenReady().then(async () => {
   // Register a custom protocol to serve frontend files with correct MIME types
   protocol.handle('app', async (request) => {
-    let filePath = path.join(__dirname, '..', 'dist', 'frontend', request.url.slice('app://./'.length));
+    let filePath = path.join(__dirname, '..', 'frontend', request.url.slice('app://./'.length));
     if (request.url === 'app://./index.html') {
-      filePath = path.join(__dirname, '..', 'dist', 'frontend', 'index.html');
+      filePath = path.join(__dirname, '..', 'frontend', 'index.html');
     }
 
     try {
@@ -417,6 +417,18 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("ping", () => "pong");
+
+  ipcMain.handle("read-html-file", async (event, componentPath: string) => {
+    try {
+      // Resolve the path relative to the frontend dist directory
+      const fullPath = path.join(__dirname, '..', 'dist', 'frontend', 'components', componentPath);
+      const fileContent = await fsp.readFile(fullPath, 'utf8');
+      return fileContent;
+    } catch (error) {
+      log.error(`Failed to read HTML file: ${componentPath}`, error);
+      throw new Error(`Failed to read HTML file: ${componentPath}`);
+    }
+  });
 
   try {
     // Start the backend server

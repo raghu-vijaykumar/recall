@@ -17,5 +17,8 @@ declare global {
       on: (channel: string, callback: (...args: any[]) => void) => void;
       off: (channel: string, callback: (...args: any[]) => void) => void;
     };
+    electronAPI: {
+      readHtmlFile: (filePath: string) => Promise<string>;
+    };
   }
 }

@@ -1,0 +1,58 @@
+# Electron Forge build configuration for packaging Recall into a Windows .exe
+
+# This YAML file describes what files and folders are included in the packaged .exe
+# and how the Electron Forge build process should behave.
+
+# This file is intended for use with electron-forge and electron-builder (if needed).
+# Place this file at the root of your project as 'build.yaml'.
+
+# For electron-forge, most configuration is in package.json, but you can use this YAML
+# for clarity or if you use electron-builder as well.
+
+appId: com.raghu-vijaykumar.recall
+productName: Recall
+files:
+  # Main Electron/Node/Frontend build output
+  - dist/**/*
+  # Backend Python executable (built by PyInstaller)
+  - backend/.venv-build/Scripts/recall-backend.exe
+  # Static assets (if not already in dist)
+  - backend/app/static/**/*
+  # Database files (if needed at runtime)
+  - database/**/*
+  # Any HTML components for frontend
+  - frontend/components/**/*.html
+  # Main process and preload scripts
+  - main.js
+  - preload.js
+  # Any other required files
+  - package.json
+  - index.html
+  - style.css
+  - render.js
+
+# Exclude development and build artifacts
+exclude:
+  - node_modules/
+  - backend/.venv-build/
+  - backend/__pycache__/
+  - backend/build/
+  - backend/dist/
+  - .git/
+  - scripts/
+  - tests/
+  - "**/*.map"
+
+# Windows-specific options
+win:
+  target:
+    - nsis
+    - portable
+  icon: build/icon.ico
+
+# Extra metadata
+extraMetadata:
+  version: 1.0.0
+  author: Raghu Vijaykumar
+# If using electron-builder, you can reference this file in your package.json:
+# "build": "build.yaml"

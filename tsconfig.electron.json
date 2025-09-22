@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "outDir": "dist",
+    "outDir": "dist/electron",
     "rootDir": "electron",
     "noEmitOnError": false
   },
