@@ -15,7 +15,7 @@ files:
   # Main Electron/Node/Frontend build output
   - dist/**/*
   # Backend Python executable (built by PyInstaller)
-  - backend/.venv-build/Scripts/recall-backend.exe
+  - backend/dist/recall-backend.exe
   # Static assets (if not already in dist)
   - backend/app/static/**/*
   # Database files (if needed at runtime)

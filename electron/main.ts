@@ -130,19 +130,30 @@ function stopBackend(): Promise<void> {
   return new Promise((resolve) => {
     if (backendProcess) {
       log.info('Stopping backend server...');
-      backendProcess.kill('SIGTERM');
 
-      const timeout = setTimeout(() => {
-        if (backendProcess && !backendProcess.killed) {
-          backendProcess.kill('SIGKILL');
-        }
-        resolve();
-      }, 5000);
+      // On Windows, SIGTERM may not work reliably, so we use a more aggressive approach
+      if (process.platform === 'win32') {
+        // For Windows, try SIGKILL immediately since SIGTERM often doesn't work
+        backendProcess.kill('SIGKILL');
+        setTimeout(() => {
+          resolve();
+        }, 1000); // Give it 1 second to terminate
+      } else {
+        // For Unix-like systems, try SIGTERM first, then SIGKILL if needed
+        backendProcess.kill('SIGTERM');
 
-      backendProcess.on('close', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+        const timeout = setTimeout(() => {
+          if (backendProcess && !backendProcess.killed) {
+            backendProcess.kill('SIGKILL');
+          }
+          resolve();
+        }, 3000); // Reduced timeout since we have lifespan handler now
+
+        backendProcess.on('close', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      }
     } else {
       resolve();
     }
