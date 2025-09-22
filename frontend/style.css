@@ -38,6 +38,18 @@ body {
   display: block;
 }
 
+/* Full width for files tab */
+#files-tab {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Left align workspaces */
+#workspaces-tab {
+  margin: 0;
+}
+
 /* Workspace Styles */
 .workspace-header {
   display: flex;
@@ -72,6 +84,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
   position: relative;
   overflow: hidden;
+  aspect-ratio: 1;
 }
 
 .workspace-card::before {
@@ -138,11 +151,13 @@ body {
 /* Sidebar */
 .sidebar {
   width: 300px;
+  height: 100%;
   background: #252526;
   border-right: 1px solid #3e3e42;
   display: flex;
   flex-direction: column;
   box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+  overflow: hidden;
 }
 
 .sidebar-header {

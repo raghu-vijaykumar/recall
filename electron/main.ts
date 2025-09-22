@@ -126,18 +126,27 @@ async function findAvailablePortAndStartBackend(startPort: number, maxRetries: n
   throw new Error(`Failed to start backend after ${maxRetries} retries. All ports from ${startPort} to ${currentPort - 1} are in use.`);
 }
 
-function stopBackend() {
-  if (backendProcess) {
-    log.info('Stopping backend server...');
-    backendProcess.kill('SIGTERM');
+function stopBackend(): Promise<void> {
+  return new Promise((resolve) => {
+    if (backendProcess) {
+      log.info('Stopping backend server...');
+      backendProcess.kill('SIGTERM');
 
-    // Force kill after 5 seconds
-    setTimeout(() => {
-      if (backendProcess && !backendProcess.killed) {
-        backendProcess.kill('SIGKILL');
-      }
-    }, 5000);
-  }
+      const timeout = setTimeout(() => {
+        if (backendProcess && !backendProcess.killed) {
+          backendProcess.kill('SIGKILL');
+        }
+        resolve();
+      }, 5000);
+
+      backendProcess.on('close', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
 }
 
 const createWindow = () => {
@@ -508,13 +517,14 @@ ipcMain.handle("read-file-content", async (event, filePath: string) => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    stopBackend();
     app.quit();
   }
 });
 
-app.on("before-quit", () => {
-  stopBackend();
+app.on("before-quit", async (event) => {
+  event.preventDefault();
+  await stopBackend();
+  app.quit();
 });
 
 // Handle app quit on macOS

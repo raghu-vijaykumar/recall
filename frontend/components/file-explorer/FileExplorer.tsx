@@ -12,6 +12,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [openFiles, setOpenFiles] = useState<Tab[]>([]);
+  const [recentlyOpened, setRecentlyOpened] = useState<Tab[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -32,6 +33,46 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
   useEffect(() => {
     initializeMonacoEditor();
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('recentlyOpened');
+      if (saved) {
+        try {
+          setRecentlyOpened(JSON.parse(saved));
+        } catch (error) {
+          console.error('Failed to parse recentlyOpened from localStorage:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to access localStorage for recentlyOpened:', error);
+    }
+
+    try {
+      const savedOpen = localStorage.getItem('openFiles');
+      if (savedOpen) {
+        try {
+          const parsed = JSON.parse(savedOpen);
+          setOpenFiles(parsed);
+          if (parsed.length > 0) {
+            setActiveFileId(parsed[parsed.length - 1].id);
+          }
+        } catch (error) {
+          console.error('Failed to parse openFiles from localStorage:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to access localStorage for openFiles:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('openFiles', JSON.stringify(openFiles));
+    } catch (error) {
+      console.error('Failed to save openFiles to localStorage:', error);
+    }
+  }, [openFiles]);
 
   const loadWorkspace = async () => {
     if (!currentWorkspaceId) return;
@@ -123,11 +164,18 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
   };
 
   const closeTab = (fileId: number) => {
-    setOpenFiles(prev => prev.filter(f => f.id !== fileId));
+    const remainingTabs = openFiles.filter(f => f.id !== fileId);
+    setOpenFiles(remainingTabs);
     if (activeFileId === fileId) {
-      const remainingTabs = openFiles.filter(f => f.id !== fileId);
       if (remainingTabs.length > 0) {
-        setActiveFileId(remainingTabs[remainingTabs.length - 1].id);
+        const newActiveId = remainingTabs[remainingTabs.length - 1].id;
+        setActiveFileId(newActiveId);
+        if (monacoEditorRef.current) {
+          const newActiveTab = remainingTabs.find(t => t.id === newActiveId);
+          if (newActiveTab) {
+            monacoEditorRef.current.setValue(newActiveTab.file.content || '');
+          }
+        }
       } else {
         setActiveFileId(null);
       }
@@ -171,33 +219,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
     }
   };
 
-  const scanCurrentWorkspaceFolder = async (showAlerts: boolean = true) => {
-    if (!currentWorkspaceId) {
-      if (showAlerts) alert('Please select a workspace first');
-      return;
-    }
 
-    try {
-      const response = await fetch(`${API_BASE}/files/scan-folder/${currentWorkspaceId}`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const scanResult = await response.json();
-        if (showAlerts) alert(`Folder scan completed!\nFound and added ${scanResult.files_created} new files.`);
-        // Refresh folder tree after scanning
-        if (workspace?.folder_path) {
-          loadFolderTree();
-        }
-      } else {
-        const error = await response.text();
-        if (showAlerts) alert(`Failed to scan folder: ${error}`);
-      }
-    } catch (error) {
-      console.error('Failed to scan folder:', error);
-      if (showAlerts) alert('Failed to scan folder');
-    }
-  };
 
   const initializeMonacoEditor = () => {
     const checkMonaco = () => {
@@ -222,6 +244,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
               wordWrap: 'on'
             });
             console.log('Monaco Editor initialized successfully');
+
+            // Set content for active file if loaded from localStorage
+            if (activeFileId) {
+              const activeTab = openFiles.find(t => t.id === activeFileId);
+              if (activeTab && monacoEditorRef.current) {
+                monacoEditorRef.current.setValue(activeTab.file.content || '');
+              }
+            }
           }
         });
       } else {
@@ -275,13 +305,6 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
               >
                 🔄
               </button>
-              <button
-                className="sidebar-btn"
-                title="Scan folder for new files"
-                onClick={() => scanCurrentWorkspaceFolder(true)}
-              >
-                📂
-              </button>
             </div>
           </div>
           <div className="file-tree">
@@ -314,7 +337,12 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
               <div
                 key={tab.id}
                 className={`tab ${activeFileId === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveFileId(tab.id)}
+                onClick={() => {
+                  setActiveFileId(tab.id);
+                  if (monacoEditorRef.current) {
+                    monacoEditorRef.current.setValue(tab.file.content || '');
+                  }
+                }}
               >
                 <span className="tab-icon">{getFileIcon(tab.name)}</span>
                 <span className="tab-name">{tab.name}</span>

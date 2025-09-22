@@ -99,37 +99,6 @@ const App: React.FC = () => {
 
   return (
     <div id="app">
-      {/* Tab Navigation */}
-      <nav className="tab-navigation">
-        <button
-          className={currentTab === 'workspaces' ? 'active' : ''}
-          onClick={() => setCurrentTab('workspaces')}
-        >
-          Workspaces
-        </button>
-        <button
-          className={currentTab === 'files' ? 'active' : ''}
-          onClick={() => setCurrentTab('files')}
-          disabled={!currentWorkspaceId}
-        >
-          Files
-        </button>
-        <button
-          className={currentTab === 'quiz' ? 'active' : ''}
-          onClick={() => setCurrentTab('quiz')}
-          disabled={!currentWorkspaceId}
-        >
-          Quiz
-        </button>
-        <button
-          className={currentTab === 'progress' ? 'active' : ''}
-          onClick={() => setCurrentTab('progress')}
-          disabled={!currentWorkspaceId}
-        >
-          Progress
-        </button>
-      </nav>
-
       {/* Main Content */}
       <main id="main">
         {renderTabContent()}

@@ -9,18 +9,41 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 import sys
+import asyncio
+import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from app.routes.workspaces import router as workspaces_router
 from app.routes.files import router as files_router
 from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown events."""
+    logger.info("Starting up Recall API...")
+    yield
+    logger.info("Shutting down Recall API...")
+    # Cancel all pending tasks to ensure clean shutdown
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if tasks:
+        logger.info(f"Cancelling {len(tasks)} pending tasks...")
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info("Shutdown complete.")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Recall API",
     description="Backend API for the Recall study application",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS for Electron app
