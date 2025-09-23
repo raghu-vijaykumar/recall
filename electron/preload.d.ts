@@ -19,6 +19,23 @@ declare global {
     };
     electronAPI: {
       readHtmlFile: (filePath: string) => Promise<string>;
+      getFolderTree: (folderPath: string) => Promise<any[]>;
+      readFileContent: (filePath: string) => Promise<string>;
+
+      // File operations
+      createFile: (basePath: string, name: string) => Promise<{ success: boolean; path: string }>;
+      createDirectory: (basePath: string, name: string) => Promise<{ success: boolean; path: string }>;
+      renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; oldPath: string; newPath: string }>;
+      moveFile: (sourcePath: string, destinationPath: string) => Promise<{ success: boolean; sourcePath: string; destinationPath: string }>;
+      copyFile: (sourcePath: string, destinationPath: string) => Promise<{ success: boolean; sourcePath: string; destinationPath: string }>;
+      deleteFile: (targetPath: string) => Promise<{ success: boolean; path: string }>;
+
+      // File system watching
+      onFileSystemChange: (callback: (event: any, data: any) => void) => void;
+      offFileSystemChange: (callback: (event: any, data: any) => void) => void;
+
+      // Workspace management
+      notifyWorkspaceChanged: (workspacePath: string) => void;
     };
   }
 }

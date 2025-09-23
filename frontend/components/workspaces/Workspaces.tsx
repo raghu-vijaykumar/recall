@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../../core/api.js';
+import { API_BASE } from '../../src/core/api';
 
 interface Workspace {
   id: number;

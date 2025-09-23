@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../../core/api.js';
-import { WorkspaceStats } from '../../core/types.js';
+import { API_BASE } from '../../src/core/api';
+import { WorkspaceStats } from '../../src/core/types';
 
 interface ProgressProps {
   currentWorkspaceId: number | null;

@@ -27,6 +27,23 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Utility function to copy directories recursively
+async function copyDirectory(source: string, destination: string): Promise<void> {
+  await fsp.mkdir(destination, { recursive: true });
+  const entries = await fsp.readdir(source, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(source, entry.name);
+    const destPath = path.join(destination, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectory(srcPath, destPath);
+    } else {
+      await fsp.copyFile(srcPath, destPath);
+    }
+  }
+}
+
 // Global variables for backend management
 let backendProcess: any = null;
 let backendReady = false;
@@ -160,6 +177,9 @@ function stopBackend(): Promise<void> {
   });
 }
 
+let currentWorkspacePath: string | null = null;
+let fileWatcher: fs.FSWatcher | null = null;
+
 const createWindow = () => {
   const win = new BrowserWindow({
     width: 1000,
@@ -181,7 +201,44 @@ const createWindow = () => {
 
   // Create application menu
   createMenu(win);
+
+  // Listen for workspace changes to set up file watching
+  ipcMain.on('workspace-changed', (event, workspacePath: string) => {
+    setupFileWatcher(workspacePath);
+  });
+
+  return win;
 };
+
+function setupFileWatcher(workspacePath: string) {
+  // Clean up existing watcher
+  if (fileWatcher) {
+    fileWatcher.close();
+    fileWatcher = null;
+  }
+
+  currentWorkspacePath = workspacePath;
+
+  try {
+    fileWatcher = fs.watch(workspacePath, { recursive: true }, (eventType, filename) => {
+      if (filename) {
+        // Send file system change event to renderer
+        const windows = BrowserWindow.getAllWindows();
+        windows.forEach(win => {
+          win.webContents.send('file-system-changed', {
+            eventType,
+            filename,
+            fullPath: path.join(workspacePath, filename)
+          });
+        });
+      }
+    });
+
+    log.info(`File watcher set up for workspace: ${workspacePath}`);
+  } catch (error) {
+    log.error(`Failed to set up file watcher for ${workspacePath}:`, error);
+  }
+}
 
 const createMenu = (win: any) => {
   const template: any[] = [
@@ -505,6 +562,86 @@ ipcMain.handle("read-file-content", async (event, filePath: string) => {
     } catch (error) {
       log.error(`Failed to read file ${filePath}:`, error);
       throw new Error(`Failed to read file: ${error}`);
+    }
+  });
+
+ipcMain.handle("file-operations:create", async (event, { basePath, type, name }: { basePath: string; type: 'file' | 'directory'; name: string }) => {
+    try {
+      const fullPath = path.join(basePath, name);
+
+      if (type === 'file') {
+        await fsp.writeFile(fullPath, '');
+      } else {
+        await fsp.mkdir(fullPath, { recursive: true });
+      }
+
+      log.info(`Created ${type}: ${fullPath}`);
+      return { success: true, path: fullPath };
+    } catch (error) {
+      log.error(`Failed to create ${type} ${basePath}/${name}:`, error);
+      throw new Error(`Failed to create ${type}: ${error}`);
+    }
+  });
+
+ipcMain.handle("file-operations:rename", async (event, { oldPath, newName }: { oldPath: string; newName: string }) => {
+    try {
+      const newPath = path.join(path.dirname(oldPath), newName);
+      await fsp.rename(oldPath, newPath);
+
+      log.info(`Renamed ${oldPath} to ${newPath}`);
+      return { success: true, oldPath, newPath };
+    } catch (error) {
+      log.error(`Failed to rename ${oldPath} to ${newName}:`, error);
+      throw new Error(`Failed to rename: ${error}`);
+    }
+  });
+
+ipcMain.handle("file-operations:move", async (event, { sourcePath, destinationPath }: { sourcePath: string; destinationPath: string }) => {
+    try {
+      const destPath = path.join(destinationPath, path.basename(sourcePath));
+      await fsp.rename(sourcePath, destPath);
+
+      log.info(`Moved ${sourcePath} to ${destPath}`);
+      return { success: true, sourcePath, destinationPath: destPath };
+    } catch (error) {
+      log.error(`Failed to move ${sourcePath} to ${destinationPath}:`, error);
+      throw new Error(`Failed to move: ${error}`);
+    }
+  });
+
+ipcMain.handle("file-operations:copy", async (event, { sourcePath, destinationPath }: { sourcePath: string; destinationPath: string }) => {
+    try {
+      const destPath = path.join(destinationPath, path.basename(sourcePath));
+
+      const stats = await fsp.stat(sourcePath);
+      if (stats.isDirectory()) {
+        await copyDirectory(sourcePath, destPath);
+      } else {
+        await fsp.copyFile(sourcePath, destPath);
+      }
+
+      log.info(`Copied ${sourcePath} to ${destPath}`);
+      return { success: true, sourcePath, destinationPath: destPath };
+    } catch (error) {
+      log.error(`Failed to copy ${sourcePath} to ${destinationPath}:`, error);
+      throw new Error(`Failed to copy: ${error}`);
+    }
+  });
+
+ipcMain.handle("file-operations:delete", async (event, { targetPath }: { targetPath: string }) => {
+    try {
+      const stats = await fsp.stat(targetPath);
+      if (stats.isDirectory()) {
+        await fsp.rm(targetPath, { recursive: true, force: true });
+      } else {
+        await fsp.unlink(targetPath);
+      }
+
+      log.info(`Deleted ${targetPath}`);
+      return { success: true, path: targetPath };
+    } catch (error) {
+      log.error(`Failed to delete ${targetPath}:`, error);
+      throw new Error(`Failed to delete: ${error}`);
     }
   });
 

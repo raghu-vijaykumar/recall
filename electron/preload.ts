@@ -42,4 +42,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readHtmlFile: (filePath: string) => ipcRenderer.invoke("read-html-file", filePath),
   getFolderTree: (folderPath: string) => ipcRenderer.invoke("get-folder-tree", folderPath),
   readFileContent: (filePath: string) => ipcRenderer.invoke("read-file-content", filePath),
+
+  // File operations
+  createFile: (basePath: string, name: string) => ipcRenderer.invoke("file-operations:create", { basePath, type: 'file', name }),
+  createDirectory: (basePath: string, name: string) => ipcRenderer.invoke("file-operations:create", { basePath, type: 'directory', name }),
+  renameFile: (oldPath: string, newName: string) => ipcRenderer.invoke("file-operations:rename", { oldPath, newName }),
+  moveFile: (sourcePath: string, destinationPath: string) => ipcRenderer.invoke("file-operations:move", { sourcePath, destinationPath }),
+  copyFile: (sourcePath: string, destinationPath: string) => ipcRenderer.invoke("file-operations:copy", { sourcePath, destinationPath }),
+  deleteFile: (targetPath: string) => ipcRenderer.invoke("file-operations:delete", { targetPath }),
+
+  // File system watching
+  onFileSystemChange: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.on('file-system-changed', callback);
+  },
+  offFileSystemChange: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.off('file-system-changed', callback);
+  },
+
+  // Workspace management
+  notifyWorkspaceChanged: (workspacePath: string) => ipcRenderer.send('workspace-changed', workspacePath),
 });

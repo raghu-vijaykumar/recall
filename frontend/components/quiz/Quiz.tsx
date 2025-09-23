@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../../core/api.js';
-import { Quiz as QuizType } from '../../core/types.js';
+import { API_BASE } from '../../src/core/api';
+import { Quiz as QuizType } from '../../src/core/types';
 
 interface QuizProps {
   currentWorkspaceId: number | null;

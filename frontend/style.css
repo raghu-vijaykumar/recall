@@ -1090,7 +1090,6 @@ body {
 
 /* Modal */
 .modal {
-  display: none;
   position: fixed;
   top: 0;
   left: 0;
@@ -1100,10 +1099,9 @@ body {
   backdrop-filter: blur(8px);
   z-index: 1000;
   animation: fadeIn 0.3s ease;
-}
-
-.modal.show {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes fadeIn {
@@ -1114,7 +1112,6 @@ body {
 .modal-content {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
-  margin: 5% auto;
   padding: 3rem;
   border-radius: 20px;
   width: 90%;
@@ -1148,6 +1145,55 @@ body {
   justify-content: center;
   gap: 1rem;
   margin-top: 2rem;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: #2d2d30;
+  border: 1px solid #3e3e42;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 2000;
+  min-width: 180px;
+  font-size: 14px;
+  color: #cccccc;
+  backdrop-filter: blur(10px);
+}
+
+.context-menu-content {
+  padding: 8px 0;
+}
+
+.context-menu-content button {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.context-menu-content button:hover {
+  background: #007acc;
+  color: #ffffff;
+}
+
+.context-menu-content hr {
+  border: none;
+  border-top: 1px solid #3e3e42;
+  margin: 6px 0;
+}
+
+/* Dragging State */
+.tree-item.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Form Styles */
