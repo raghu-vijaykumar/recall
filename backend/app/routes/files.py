@@ -21,7 +21,7 @@ router = APIRouter()
 
 # Dependency to get file service
 def get_file_service() -> FileService:
-    db_service = DatabaseService("database/recall.db")
+    db_service = DatabaseService()  # Use environment variable DATABASE_PATH
     return FileService(db_service)
 
 

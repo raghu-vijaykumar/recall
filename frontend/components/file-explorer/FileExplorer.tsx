@@ -16,6 +16,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeView, setActiveView] = useState<'explorer' | 'search'>('explorer');
   const monacoEditorRef = useRef<MonacoEditor | null>(null);
 
   useEffect(() => {
@@ -221,6 +225,157 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
 
 
 
+  const filterTreeBySearch = (nodes: FolderTreeNode[], query: string): FolderTreeNode[] => {
+    if (!query.trim()) return nodes;
+
+    const lowerQuery = query.toLowerCase();
+
+    return nodes.reduce((filtered: FolderTreeNode[], node) => {
+      const matchesName = node.name.toLowerCase().includes(lowerQuery);
+
+      if (node.type === 'directory' && node.children) {
+        const filteredChildren = filterTreeBySearch(node.children, query);
+        if (matchesName || filteredChildren.length > 0) {
+          filtered.push({
+            ...node,
+            children: filteredChildren
+          });
+        }
+      } else if (matchesName) {
+        filtered.push(node);
+      }
+
+      return filtered;
+    }, []);
+  };
+
+  const performContentSearch = async () => {
+    if (!searchQuery.trim() || !workspace?.folder_path) return;
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(`${API_BASE}/search/content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: currentWorkspaceId,
+          query: searchQuery,
+          folder_path: workspace.folder_path
+        })
+      });
+
+      if (response.ok) {
+        const results = await response.json();
+        setSearchResults(results);
+      } else {
+        console.error('Search failed:', response.statusText);
+        setSearchResults([]);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const renderSearchResults = () => {
+    // Group results by directory path
+    const groupedResults = searchResults.reduce((groups: any, result: any) => {
+      const pathParts = result.path.split('/');
+      const dirPath = pathParts.slice(0, -1).join('/') || '/';
+
+      if (!groups[dirPath]) {
+        groups[dirPath] = [];
+      }
+      groups[dirPath].push(result);
+      return groups;
+    }, {});
+
+    return Object.entries(groupedResults).map(([dirPath, files]: [string, any]) => (
+      <div key={dirPath} className="search-group">
+        <div className="search-group-header">
+          <span className="search-group-path">{dirPath === '/' ? 'Root' : dirPath}</span>
+        </div>
+        <div className="search-group-files">
+          {files.map((result: any) => (
+            <div
+              key={result.path}
+              className="search-result-item"
+              onClick={() => openSearchResult(result)}
+            >
+              <div className="search-result-header">
+                <span className="search-result-icon">{getFileIcon(result.name)}</span>
+                <span className="search-result-name">{result.name}</span>
+              </div>
+              {result.matches && result.matches.length > 0 && (
+                <div className="search-result-matches">
+                  {result.matches.slice(0, 3).map((match: any, index: number) => (
+                    <div key={index} className="search-match">
+                      <span className="search-match-line">Line {match.line}:</span>
+                      <span className="search-match-text">{match.text}</span>
+                    </div>
+                  ))}
+                  {result.matches.length > 3 && (
+                    <div className="search-match-more">
+                      ... and {result.matches.length - 3} more matches
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    ));
+  };
+
+  const openSearchResult = async (result: any) => {
+    if (!workspace?.folder_path) return;
+
+    const fullPath = `${workspace.folder_path}/${result.path}`;
+
+    try {
+      const content = await (window as any).electronAPI.readFileContent(fullPath);
+
+      const tempFile: File = {
+        id: Date.now(),
+        name: result.name,
+        path: result.path,
+        file_type: getFileTypeFromName(result.name),
+        size: content.length,
+        workspace_id: currentWorkspaceId!,
+        content: content
+      };
+
+      const existingTab = openFiles.find(f => f.file.path === result.path);
+      if (existingTab) {
+        setActiveFileId(existingTab.id);
+        if (monacoEditorRef.current) {
+          monacoEditorRef.current.setValue(content);
+        }
+        return;
+      }
+
+      const tab: Tab = {
+        id: tempFile.id,
+        name: tempFile.name,
+        file: tempFile,
+        isActive: false
+      };
+
+      setOpenFiles(prev => [...prev, tab]);
+      setActiveFileId(tempFile.id);
+
+      if (monacoEditorRef.current) {
+        monacoEditorRef.current.setValue(content);
+      }
+    } catch (error) {
+      console.error('Failed to open search result:', error);
+      alert('Failed to open file');
+    }
+  };
+
   const initializeMonacoEditor = () => {
     const checkMonaco = () => {
       if (typeof (window as any).require !== 'undefined') {
@@ -295,40 +450,142 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
     <div id="files-tab" className="tab-content active">
       <div className="files-container">
         <div className="sidebar">
+          <div className="icon-bar">
+            <button
+              className={`icon-btn ${activeView === 'explorer' ? 'active' : ''}`}
+              onClick={() => setActiveView('explorer')}
+              title="File Explorer"
+            >
+              📁
+            </button>
+            <button
+              className={`icon-btn ${activeView === 'search' ? 'active' : ''}`}
+              onClick={() => setActiveView('search')}
+              title="Search Files"
+            >
+              🔍
+            </button>
+          </div>
           <div className="sidebar-header">
-            <h3>EXPLORER</h3>
+            <h3>{activeView === 'explorer' ? 'EXPLORER' : 'SEARCH'}</h3>
             <div className="sidebar-actions">
-              <button
-                className="sidebar-btn"
-                title="Refresh folder tree"
-                onClick={() => loadFolderTree()}
-              >
-                🔄
-              </button>
+              {activeView === 'explorer' && (
+                <button
+                  className="sidebar-btn"
+                  title="Refresh folder tree"
+                  onClick={() => loadFolderTree()}
+                >
+                  🔄
+                </button>
+              )}
             </div>
           </div>
-          <div className="file-tree">
-            {workspace?.folder_path ? (
-              folderTree.length > 0 ? (
-                folderTree.map(node => renderTreeNode(node))
-              ) : (
-                <div className="empty-tree">
-                  <p>No files found in workspace folder</p>
-                  <button
-                    className="btn-secondary"
-                    onClick={() => loadFolderTree()}
-                  >
-                    Refresh
-                  </button>
-                </div>
-              )
-            ) : (
-              <div className="empty-tree">
-                <p>No folder linked to this workspace</p>
-                <p>Use "File → Open Folder" to link a folder</p>
-              </div>
+          <div className="search-container">
+            <input
+              type="text"
+              placeholder="Search files..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+            {searchQuery && (
+              <button
+                className="clear-search-btn"
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                ×
+              </button>
             )}
           </div>
+          {activeView === 'explorer' ? (
+            <div className="file-tree">
+              {workspace?.folder_path ? (
+                folderTree.length > 0 ? (
+                  (() => {
+                    const filteredTree = searchQuery ? filterTreeBySearch(folderTree, searchQuery) : folderTree;
+                    return filteredTree.length > 0 ? (
+                      filteredTree.map(node => renderTreeNode(node))
+                    ) : (
+                      <div className="empty-tree">
+                        <p>No files match your search</p>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => setSearchQuery('')}
+                        >
+                          Clear search
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="empty-tree">
+                    <p>No files found in workspace folder</p>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => loadFolderTree()}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div className="empty-tree">
+                  <p>No folder linked to this workspace</p>
+                  <p>Use "File → Open Folder" to link a folder</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="search-results">
+              <div className="search-input-container">
+                <input
+                  type="text"
+                  placeholder="Search file contents..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                  onKeyPress={(e) => e.key === 'Enter' && performContentSearch()}
+                />
+                <button
+                  className="search-btn"
+                  onClick={performContentSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                >
+                  {isSearching ? '🔄' : '🔍'}
+                </button>
+                {searchQuery && (
+                  <button
+                    className="clear-search-btn"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <div className="search-results-list">
+                {searchResults.length > 0 ? (
+                  renderSearchResults()
+                ) : searchQuery && !isSearching ? (
+                  <div className="empty-search">
+                    <p>No files found containing "{searchQuery}"</p>
+                  </div>
+                ) : isSearching ? (
+                  <div className="searching">
+                    <p>Searching...</p>
+                  </div>
+                ) : (
+                  <div className="empty-search">
+                    <p>Enter a search term to find files by content</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="main-editor">

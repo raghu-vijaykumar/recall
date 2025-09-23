@@ -35,6 +35,9 @@ class WorkspaceUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     type: Optional[WorkspaceType] = None
     color: Optional[str] = None
+    folder_path: Optional[str] = Field(
+        None, description="Path to associated folder on file system"
+    )
 
 
 class Workspace(WorkspaceBase):

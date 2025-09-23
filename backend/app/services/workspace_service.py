@@ -135,6 +135,8 @@ class WorkspaceService:
             data["type"] = update_data.type.value
         if update_data.color is not None:
             data["color"] = update_data.color
+        if update_data.folder_path is not None:
+            data["folder_path"] = update_data.folder_path
 
         if data:
             self.db.update("workspaces", workspace_id, data)

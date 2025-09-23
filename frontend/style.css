@@ -160,6 +160,38 @@ body {
   overflow: hidden;
 }
 
+.icon-bar {
+  display: flex;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.icon-btn {
+  flex: 1;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.2s ease;
+  border-right: 1px solid #3e3e42;
+}
+
+.icon-btn:last-child {
+  border-right: none;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.icon-btn.active {
+  background: #007acc;
+  color: #ffffff;
+}
+
 .sidebar-header {
   display: flex;
   justify-content: space-between;
@@ -172,6 +204,215 @@ body {
   color: #cccccc;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.search-container {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #3e3e42;
+  background: #252526;
+}
+
+.search-input {
+  flex: 1;
+  background: #3c3c3c;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  color: #cccccc;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  border-color: #007acc;
+  background: #1e1e1e;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.search-input::placeholder {
+  color: #888888;
+}
+
+.clear-search-btn {
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  padding: 0.5rem;
+  margin-left: 0.5rem;
+  border-radius: 3px;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-search-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* Search Results Styles */
+.search-results {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-input-container {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #3e3e42;
+  background: #252526;
+  gap: 0.5rem;
+}
+
+.search-btn {
+  background: #007acc;
+  border: 1px solid #007acc;
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-btn:hover:not(:disabled) {
+  background: #005a9e;
+  border-color: #005a9e;
+  transform: scale(1.05);
+}
+
+.search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-results-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.search-group {
+  margin-bottom: 1.5rem;
+}
+
+.search-group-header {
+  padding: 0.5rem 1rem;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.search-group-path {
+  font-size: 0.85rem;
+  color: #cccccc;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-group-files {
+  padding: 0.25rem 0;
+}
+
+.search-result-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0.125rem 0.5rem;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.search-result-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.search-result-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.search-result-icon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+  width: 16px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.search-result-name {
+  font-size: 0.9rem;
+  color: #cccccc;
+  font-weight: 500;
+}
+
+.search-result-matches {
+  margin-left: 1.5rem;
+}
+
+.search-match {
+  font-size: 0.8rem;
+  color: #888888;
+  margin-bottom: 0.25rem;
+  line-height: 1.4;
+}
+
+.search-match-line {
+  color: #007acc;
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.search-match-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.search-match-more {
+  font-size: 0.75rem;
+  color: #666666;
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+.empty-search {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #cccccc;
+}
+
+.empty-search p {
+  margin-bottom: 1rem;
+  opacity: 0.8;
+}
+
+.searching {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #cccccc;
+}
+
+.searching p {
+  opacity: 0.8;
 }
 
 .sidebar-actions {
