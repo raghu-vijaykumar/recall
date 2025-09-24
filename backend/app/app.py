@@ -19,6 +19,8 @@ from app.routes.files import router as files_router
 from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 from app.routes.search import router as search_router
+from app.routes.knowledge_graph import router as knowledge_graph_router
+from app.routes.quiz_improvements import router as quiz_improvements_router
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,8 @@ app.include_router(files_router, prefix="/api/files", tags=["files"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["quiz"])
 app.include_router(progress_router, prefix="/api/progress", tags=["progress"])
 app.include_router(search_router, prefix="/api/search", tags=["search"])
+app.include_router(knowledge_graph_router, tags=["knowledge-graph"])
+app.include_router(quiz_improvements_router, tags=["quiz-improvements"])
 
 
 @app.get("/")

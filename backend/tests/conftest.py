@@ -7,6 +7,8 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 # Import routes
 from app.routes.workspaces import router as workspaces_router
@@ -14,6 +16,9 @@ from app.routes.files import router as files_router
 from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 from app.routes.search import router as search_router
+
+# Import migration service for test database setup
+from app.services.migration_service import MigrationService
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -73,3 +78,27 @@ def client(app):
     """Create a test client for the FastAPI app."""
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def db_session():
+    """Create a test database session factory with initialized schema."""
+    # Get the test database path from environment
+    db_path = os.environ.get("DATABASE_PATH", ":memory:")
+
+    # Initialize database with migrations
+    migrations_dir = Path(__file__).parent.parent / "migrations"
+    migration_service = MigrationService(str(db_path), str(migrations_dir))
+
+    if not migration_service.apply_pending_migrations():
+        raise RuntimeError("Failed to apply database migrations for tests")
+
+    # Create async engine for test database
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
+
+    # Create session factory
+    async_session_factory = sessionmaker(
+        bind=engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    return async_session_factory

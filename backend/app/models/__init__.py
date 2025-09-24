@@ -1,6 +1,20 @@
 from .workspace import Workspace, WorkspaceCreate, WorkspaceUpdate
 from .file import FileItem, FileCreate, FileUpdate
-from .quiz import Question, QuizSession, Answer
+from .quiz import (
+    Question,
+    QuestionCreate,
+    QuizSession,
+    Answer,
+    SpacedRepetitionData,
+)
+from .knowledge_graph import (
+    Concept,
+    Relationship,
+    ConceptFile,
+    ConceptCreate,
+    RelationshipCreate,
+    ConceptFileCreate,
+)
 from .progress import Progress, UserStats
 
 __all__ = [
@@ -11,8 +25,16 @@ __all__ = [
     "FileCreate",
     "FileUpdate",
     "Question",
+    "QuestionCreate",
     "QuizSession",
     "Answer",
+    "SpacedRepetitionData",
+    "Concept",
+    "Relationship",
+    "ConceptFile",
+    "ConceptCreate",
+    "RelationshipCreate",
+    "ConceptFileCreate",
     "Progress",
     "UserStats",
 ]

@@ -1,6 +1,6 @@
 import google.generativeai as genai
 from .base import LLMClient
-from .exceptions import APIKeyError, LLMServiceError
+from .exceptions import APIKeyError, LLMServiceError, RateLimitExceededError
 from .utils.rate_limiter import RateLimiter
 from .utils.retry_mechanism import retry
 from .config import get_llm_config_value
