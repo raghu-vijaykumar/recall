@@ -246,42 +246,10 @@ const createMenu = (win: any) => {
       label: 'File',
       submenu: [
         {
-          label: 'New File',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => {
-            win.webContents.send('menu-new-file');
-          }
-        },
-        {
           label: 'Save',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
             win.webContents.send('menu-save-file');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Workspaces',
-          click: () => {
-            win.webContents.send('menu-show-workspaces');
-          }
-        },
-        {
-          label: 'Files',
-          click: () => {
-            win.webContents.send('menu-show-files');
-          }
-        },
-        {
-          label: 'Quiz',
-          click: () => {
-            win.webContents.send('menu-show-quiz');
-          }
-        },
-        {
-          label: 'Progress',
-          click: () => {
-            win.webContents.send('menu-show-progress');
           }
         },
         { type: 'separator' },
@@ -303,31 +271,6 @@ const createMenu = (win: any) => {
       ]
     },
     {
-      label: 'Workspace',
-      submenu: [
-        {
-          label: 'Create Workspace',
-          click: () => {
-            win.webContents.send('menu-create-workspace');
-          }
-        },
-        {
-          label: 'Open Workspace',
-          click: () => {
-            win.webContents.send('menu-open-workspace');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Refresh Files',
-          accelerator: 'F5',
-          click: () => {
-            win.webContents.send('menu-refresh-files');
-          }
-        }
-      ]
-    },
-    {
       label: 'Edit',
       submenu: [
         { role: 'undo' },
@@ -343,15 +286,9 @@ const createMenu = (win: any) => {
       label: 'View',
       submenu: [
         {
-          label: 'Workspaces',
+          label: 'Knowledge Graph',
           click: () => {
-            win.webContents.send('menu-show-workspaces');
-          }
-        },
-        {
-          label: 'Files',
-          click: () => {
-            win.webContents.send('menu-show-files');
+            win.webContents.send('menu-show-knowledge-graph');
           }
         },
         {

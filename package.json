@@ -9,6 +9,8 @@
     "dev": "make dev",
     "dist": "make dist",
     "test": "make test",
+    "test:frontend": "vitest --run",
+    "test:frontend:coverage": "vitest --coverage --run --coverage.thresholds.statements=69 --coverage.thresholds.branches=69 --coverage.thresholds.functions=69 --coverage.thresholds.lines=69",
     "clean": "make clean",
     "start": "make start",
     "install-app": "make install"
@@ -24,24 +26,30 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
     "@electron-forge/plugin-fuses": "^7.9.0",
     "@electron/fuses": "^1.8.0",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
     "@types/electron": "^1.4.38",
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
+    "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.2.1",
     "copyfiles": "^2.4.1",
     "electron": "^38.1.2",
+    "jsdom": "^27.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "rimraf": "^6.0.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.6",
-    "rimraf": "^6.0.0"
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@types/mime-types": "^3.0.1",
+    "d3": "^7.9.0",
+    "electron-log": "^5.1.6",
     "electron-squirrel-startup": "^1.0.1",
-    "mime-types": "^3.0.1",
-    "electron-log": "^5.1.6"
+    "mime-types": "^3.0.1"
   }
 }

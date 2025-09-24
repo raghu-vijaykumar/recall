@@ -258,62 +258,221 @@ async def get_weak_performance_areas(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Analyze performance patterns to identify weak areas
+    Analyze performance patterns to identify weak areas with advanced analytics
     """
-    # This would implement weak area analysis
-    # For now, return placeholder data
+    from sqlalchemy import text
+    import json
+    from datetime import datetime, timedelta
 
-    # Simple implementation: get questions with low success rates
-    query = """
+    # Get comprehensive performance data
+    base_query = """
         SELECT
             q.id,
             q.question_text,
+            q.question_type,
             q.difficulty,
             q.kg_concept_ids,
+            q.created_at,
             COUNT(a.id) as times_asked,
             SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END) as times_correct,
-            (COUNT(a.id) - SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END)) * 1.0 / COUNT(a.id) as error_rate
+            AVG(a.time_taken) as avg_time,
+            MIN(a.created_at) as first_asked,
+            MAX(a.created_at) as last_asked,
+            SUM(CASE WHEN a.is_correct THEN 0 ELSE 1 END) as times_incorrect
         FROM questions q
         LEFT JOIN answers a ON q.id = a.question_id
         WHERE q.times_asked > 0
     """
 
     if workspace_id:
-        query += " AND q.file_id IN (SELECT id FROM files WHERE workspace_id = :workspace_id)"
+        base_query += " AND q.file_id IN (SELECT id FROM files WHERE workspace_id = :workspace_id)"
 
-    query += """
-        GROUP BY q.id, q.question_text, q.difficulty, q.kg_concept_ids
-        HAVING COUNT(a.id) > 2  -- Only consider questions asked multiple times
-        ORDER BY error_rate DESC
-        LIMIT :limit
+    base_query += """
+        GROUP BY q.id, q.question_text, q.question_type, q.difficulty, q.kg_concept_ids, q.created_at
+        HAVING COUNT(a.id) >= 3  -- Need sufficient data points
     """
 
-    from sqlalchemy import text
+    result = await db.execute(text(base_query), {"workspace_id": workspace_id})
+    question_performance = result.fetchall()
 
-    result = await db.execute(
-        text(query), {"workspace_id": workspace_id, "limit": limit}
-    )
-    rows = result.fetchall()
-
+    # Analyze patterns and calculate advanced metrics
     weak_areas = []
-    for row in rows:
-        import json
+    now = datetime.utcnow()
 
-        kg_concept_ids = json.loads(row.kg_concept_ids) if row.kg_concept_ids else None
+    for row in question_performance:
+        # Basic metrics
+        accuracy = row.times_correct / row.times_asked if row.times_asked > 0 else 0
+        error_rate = 1 - accuracy
+
+        # Advanced metrics
+        consistency_score = 1 - (
+            row.times_incorrect / row.times_asked
+        )  # Lower is more consistent failures
+
+        # Recency-weighted performance (recent mistakes matter more)
+        days_since_last_asked = (now - row.last_asked).days if row.last_asked else 30
+        recency_weight = min(
+            days_since_last_asked / 7, 2
+        )  # Max 2x weight for very recent
+
+        # Learning velocity (improvement over time)
+        learning_velocity = 0
+        if (
+            row.first_asked
+            and row.last_asked
+            and (row.last_asked - row.first_asked).days > 7
+        ):
+            # Simplified: assume some learning if accuracy > 0.5 after multiple attempts
+            learning_velocity = accuracy - 0.5 if accuracy > 0.5 else accuracy - 0.7
+
+        # Difficulty-adjusted score (hard questions get more weight)
+        difficulty_multiplier = {"easy": 0.8, "medium": 1.0, "hard": 1.3}.get(
+            row.difficulty, 1.0
+        )
+
+        # Overall weakness score
+        weakness_score = (
+            (error_rate * 0.4)  # High error rate
+            + ((1 - consistency_score) * 0.3)  # Inconsistent performance
+            + (recency_weight * 0.2)  # Recent struggles
+            + (difficulty_multiplier * 0.1)  # Difficulty consideration
+        )
+
+        # Parse concept IDs
+        kg_concept_ids = json.loads(row.kg_concept_ids) if row.kg_concept_ids else []
+
+        # Time-based analysis
+        time_trend = "stable"
+        if row.avg_time and row.times_asked > 5:
+            # Analyze if user is taking longer (struggling) or shorter (mastering)
+            recent_answers_query = text(
+                """
+                SELECT time_taken, is_correct, created_at
+                FROM answers
+                WHERE question_id = :question_id
+                ORDER BY created_at DESC
+                LIMIT 5
+            """
+            )
+
+            recent_result = await db.execute(
+                recent_answers_query, {"question_id": row.id}
+            )
+            recent_answers = recent_result.fetchall()
+
+            if len(recent_answers) >= 3:
+                recent_avg_time = sum(r.time_taken for r in recent_answers) / len(
+                    recent_answers
+                )
+                if recent_avg_time > row.avg_time * 1.2:
+                    time_trend = "struggling"  # Taking longer
+                elif recent_avg_time < row.avg_time * 0.8:
+                    time_trend = "improving"  # Taking less time
 
         weak_areas.append(
             {
                 "question_id": row.id,
                 "question_text": row.question_text,
+                "question_type": row.question_type,
                 "difficulty": row.difficulty,
                 "kg_concept_ids": kg_concept_ids,
-                "times_asked": row.times_asked,
-                "times_correct": row.times_correct,
-                "error_rate": row.error_rate,
+                "performance_metrics": {
+                    "times_asked": row.times_asked,
+                    "times_correct": row.times_correct,
+                    "accuracy": accuracy,
+                    "error_rate": error_rate,
+                    "avg_time_seconds": row.avg_time,
+                    "consistency_score": consistency_score,
+                    "learning_velocity": learning_velocity,
+                    "time_trend": time_trend,
+                },
+                "weakness_score": weakness_score,
+                "recommendations": _generate_weakness_recommendations(
+                    accuracy, consistency_score, time_trend, row.difficulty
+                ),
+                "last_asked_days": days_since_last_asked,
             }
         )
 
-    return {"weak_areas": weak_areas}
+    # Sort by weakness score and return top issues
+    weak_areas.sort(key=lambda x: x["weakness_score"], reverse=True)
+
+    # Group by concepts for higher-level insights
+    concept_weakness = {}
+    for area in weak_areas[: limit * 2]:  # Get more for concept analysis
+        for concept_id in area["kg_concept_ids"] or []:
+            if concept_id not in concept_weakness:
+                concept_weakness[concept_id] = {
+                    "concept_id": concept_id,
+                    "total_questions": 0,
+                    "avg_weakness": 0,
+                    "question_count": 0,
+                }
+            concept_weakness[concept_id]["total_questions"] += 1
+            concept_weakness[concept_id]["avg_weakness"] += area["weakness_score"]
+            concept_weakness[concept_id]["question_count"] += 1
+
+    # Calculate concept-level insights
+    concept_insights = []
+    for concept_data in concept_weakness.values():
+        if concept_data["question_count"] > 0:
+            concept_data["avg_weakness"] /= concept_data["question_count"]
+            concept_insights.append(concept_data)
+
+    concept_insights.sort(key=lambda x: x["avg_weakness"], reverse=True)
+
+    return {
+        "weak_areas": weak_areas[:limit],
+        "concept_insights": concept_insights[:5],  # Top 5 weak concepts
+        "summary": {
+            "total_questions_analyzed": len(question_performance),
+            "weak_questions_found": len(
+                [w for w in weak_areas if w["weakness_score"] > 0.5]
+            ),
+            "average_accuracy": (
+                sum(w["performance_metrics"]["accuracy"] for w in weak_areas)
+                / len(weak_areas)
+                if weak_areas
+                else 0
+            ),
+        },
+    }
+
+
+def _generate_weakness_recommendations(
+    accuracy: float, consistency: float, time_trend: str, difficulty: str
+) -> List[str]:
+    """Generate personalized recommendations based on performance patterns"""
+    recommendations = []
+
+    if accuracy < 0.5:
+        recommendations.append(
+            "Focus on fundamental concepts - consider reviewing basic materials"
+        )
+    elif accuracy < 0.7:
+        recommendations.append("Practice similar questions to build confidence")
+
+    if consistency < 0.6:
+        recommendations.append(
+            "Work on consistency - review mistakes and understand why they occurred"
+        )
+
+    if time_trend == "struggling":
+        recommendations.append("Take more time to understand concepts before answering")
+    elif time_trend == "improving":
+        recommendations.append("Great progress! Continue practicing at this pace")
+
+    if difficulty == "hard" and accuracy < 0.6:
+        recommendations.append(
+            "Break down complex topics into smaller, manageable parts"
+        )
+    elif difficulty == "easy" and accuracy < 0.8:
+        recommendations.append("Review basic concepts that may have been misunderstood")
+
+    if not recommendations:
+        recommendations.append("Continue practicing to maintain performance")
+
+    return recommendations
 
 
 @router.post("/voice-answer")

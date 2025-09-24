@@ -18,12 +18,18 @@ import FileSearch from './components/FileSearch';
 import EditorTabs from './components/EditorTabs';
 import FileOperationModals from './components/FileOperationModals';
 import FileContextMenu from './components/FileContextMenu';
+import Progress from '../progress/Progress';
+import Quiz from '../quiz/Quiz';
+import { KnowledgeGraph } from '../knowledge-graph/KnowledgeGraph';
+import Chat from '../chat/Chat';
+import { useTheme } from '../../src/core/ThemeContext';
 
 interface FileExplorerProps {
   currentWorkspaceId: number | null;
 }
 
 const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
+  const { isDark } = useTheme();
   const {
     workspace,
     setWorkspace,
@@ -182,13 +188,48 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
             <button
               className={`icon-btn ${activeView === 'search' ? 'active' : ''}`}
               onClick={() => setActiveView('search')}
-              title="Search Files"
+              title="Search"
             >
               🔍
             </button>
+            <button
+              className={`icon-btn ${activeView === 'progress' ? 'active' : ''}`}
+              onClick={() => setActiveView('progress')}
+              title="Progress"
+            >
+              📊
+            </button>
+            <button
+              className={`icon-btn ${activeView === 'knowledge-graph' ? 'active' : ''}`}
+              onClick={() => setActiveView('knowledge-graph')}
+              title="Knowledge Graph"
+            >
+              🧠
+            </button>
+            <button
+              className={`icon-btn ${activeView === 'quiz' ? 'active' : ''}`}
+              onClick={() => setActiveView('quiz')}
+              title="Quiz"
+            >
+              ❓
+            </button>
+            <button
+              className={`icon-btn ${activeView === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveView('chat')}
+              title="AI Chat"
+            >
+              💬
+            </button>
           </div>
           <div className="sidebar-header">
-            <h3>{activeView === 'explorer' ? 'EXPLORER' : 'SEARCH'}</h3>
+            <h3>
+              {activeView === 'explorer' ? 'EXPLORER' :
+               activeView === 'search' ? 'SEARCH' :
+               activeView === 'progress' ? 'PROGRESS' :
+               activeView === 'knowledge-graph' ? 'KNOWLEDGE GRAPH' :
+               activeView === 'quiz' ? 'QUIZ' :
+               activeView === 'chat' ? 'AI CHAT' : 'EXPLORER'}
+            </h3>
             <div className="sidebar-actions">
               {activeView === 'explorer' && (
                 <button
@@ -201,51 +242,101 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
               )}
             </div>
           </div>
-          <div className="search-container">
-            <input
-              type="text"
-              placeholder="Search files..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input"
-            />
-            {searchQuery && (
-              <button
-                className="clear-search-btn"
-                onClick={() => setSearchQuery('')}
-                title="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
-          {activeView === 'explorer' ? (
-            <FileTree
-              folderTree={folderTree}
-              expandedDirs={expandedDirs}
-              openFiles={openFiles}
-              draggedItem={draggedItem}
-              searchQuery={searchQuery}
-              toggleDirectory={toggleDirectory}
-              openFile={openFile}
-              handleContextMenu={handleContextMenu}
-              handleDragStart={handleDragStart}
-              handleDragOver={handleDragOver}
-              handleDrop={handleDrop}
-              filterTreeBySearch={filterTreeBySearch}
-            />
-          ) : (
-            <FileSearch
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              searchResults={searchResults}
-              setSearchResults={setSearchResults}
-              isSearching={isSearching}
-              setIsSearching={setIsSearching}
-              currentWorkspaceId={currentWorkspaceId}
-              workspace={workspace}
-              openSearchResult={openSearchResult}
-            />
+          {activeView === 'explorer' && (
+            <>
+              <div className="search-container">
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+                {searchQuery && (
+                  <button
+                    className="clear-search-btn"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <FileTree
+                folderTree={folderTree}
+                expandedDirs={expandedDirs}
+                openFiles={openFiles}
+                draggedItem={draggedItem}
+                searchQuery={searchQuery}
+                toggleDirectory={toggleDirectory}
+                openFile={openFile}
+                handleContextMenu={handleContextMenu}
+                handleDragStart={handleDragStart}
+                handleDragOver={handleDragOver}
+                handleDrop={handleDrop}
+                filterTreeBySearch={filterTreeBySearch}
+              />
+            </>
+          )}
+          {activeView === 'search' && (
+            <>
+              <div className="search-container">
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+                {searchQuery && (
+                  <button
+                    className="clear-search-btn"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <FileSearch
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                searchResults={searchResults}
+                setSearchResults={setSearchResults}
+                isSearching={isSearching}
+                setIsSearching={setIsSearching}
+                currentWorkspaceId={currentWorkspaceId}
+                workspace={workspace}
+                openSearchResult={openSearchResult}
+              />
+            </>
+          )}
+          {activeView === 'progress' && (
+            <div className="sidebar-content">
+              <Progress currentWorkspaceId={currentWorkspaceId} />
+            </div>
+          )}
+          {activeView === 'knowledge-graph' && (
+            <div className="sidebar-content">
+              {currentWorkspaceId ? (
+                <KnowledgeGraph workspaceId={currentWorkspaceId} />
+              ) : (
+                <div className="placeholder-content">
+                  <h4>Please select a workspace</h4>
+                  <p>The Knowledge Graph requires a workspace to be selected.</p>
+                </div>
+              )}
+            </div>
+          )}
+          {activeView === 'quiz' && (
+            <div className="sidebar-content">
+              <Quiz currentWorkspaceId={currentWorkspaceId} />
+            </div>
+          )}
+          {activeView === 'chat' && (
+            <div className="sidebar-content">
+              <Chat currentWorkspaceId={currentWorkspaceId} />
+            </div>
           )}
         </div>
 

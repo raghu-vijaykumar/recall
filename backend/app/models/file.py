@@ -72,4 +72,4 @@ class FileTreeNode(BaseModel):
 
 
 # Update forward reference
-FileTreeNode.update_forward_refs()
+FileTreeNode.model_rebuild()

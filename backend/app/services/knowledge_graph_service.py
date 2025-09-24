@@ -4,7 +4,7 @@ Knowledge Graph Service for managing concepts, relationships, and concept-file l
 
 import uuid
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,8 +42,8 @@ class KnowledgeGraphService:
                 "concept_id": concept_data.concept_id,
                 "name": concept_data.name,
                 "description": concept_data.description,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
             },
         )
 
@@ -54,8 +54,8 @@ class KnowledgeGraphService:
             concept_id=concept_data.concept_id,
             name=concept_data.name,
             description=concept_data.description,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     async def get_concept(self, concept_id: str) -> Optional[Concept]:
@@ -90,7 +90,7 @@ class KnowledgeGraphService:
         if not updates:
             return await self.get_concept(concept_id)
 
-        updates["updated_at"] = datetime.utcnow()
+        updates["updated_at"] = datetime.now(UTC)
 
         # Build dynamic update query
         set_clause = ", ".join(f"{key} = :{key}" for key in updates.keys())
@@ -138,7 +138,7 @@ class KnowledgeGraphService:
                 "target_concept_id": relationship_data.target_concept_id,
                 "type": relationship_data.type,
                 "strength": relationship_data.strength,
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(UTC),
             },
         )
 
@@ -150,7 +150,7 @@ class KnowledgeGraphService:
             target_concept_id=relationship_data.target_concept_id,
             type=relationship_data.type,
             strength=relationship_data.strength,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
 
     async def get_relationships_for_concept(

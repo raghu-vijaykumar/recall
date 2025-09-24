@@ -5,8 +5,11 @@ import Workspaces from '../components/workspaces/Workspaces';
 import FileExplorer from '../components/file-explorer/FileExplorer';
 import Quiz from '../components/quiz/Quiz';
 import Progress from '../components/progress/Progress';
+import { KnowledgeGraph } from '../components/knowledge-graph/KnowledgeGraph';
+import { ThemeProvider, useTheme } from './core/ThemeContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { toggleTheme } = useTheme();
   const [currentTab, setCurrentTab] = useState('workspaces');
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<number | null>(null);
   const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false);
@@ -31,12 +34,12 @@ const App: React.FC = () => {
       });
       window.menuEvents.on('menu-show-workspaces', () => setCurrentTab('workspaces'));
       window.menuEvents.on('menu-show-files', () => setCurrentTab('files'));
+      window.menuEvents.on('menu-show-knowledge-graph', () => setCurrentTab('knowledge-graph'));
       window.menuEvents.on('menu-show-quiz', () => setCurrentTab('quiz'));
       window.menuEvents.on('menu-show-progress', () => setCurrentTab('progress'));
       window.menuEvents.on('menu-toggle-theme', () => {
-        // This event is handled by the main process, but we might want to
-        // update the UI if the theme changes. For now, just log.
-        console.log('Theme toggle event received in renderer.');
+        // Toggle theme using our centralized theme system
+        toggleTheme();
       });
       window.menuEvents.on('folder-selected', (folderInfo: { path: string, name: string }) => {
         console.log('Folder selected:', folderInfo);
@@ -60,17 +63,18 @@ const App: React.FC = () => {
         });
         window.menuEvents.off('menu-show-workspaces', () => setCurrentTab('workspaces'));
         window.menuEvents.off('menu-show-files', () => setCurrentTab('files'));
+        window.menuEvents.off('menu-show-knowledge-graph', () => setCurrentTab('knowledge-graph'));
         window.menuEvents.off('menu-show-quiz', () => setCurrentTab('quiz'));
         window.menuEvents.off('menu-show-progress', () => setCurrentTab('progress'));
         window.menuEvents.off('menu-toggle-theme', () => {
-          console.log('Theme toggle event received in renderer.');
+          toggleTheme();
         });
         window.menuEvents.off('folder-selected', (folderInfo: { path: string, name: string }) => {
           console.log('Folder selected:', folderInfo);
         });
       }
     };
-  }, []);
+  }, [toggleTheme]);
 
   const renderTabContent = () => {
     switch (currentTab) {
@@ -83,6 +87,8 @@ const App: React.FC = () => {
         />;
       case 'files':
         return <FileExplorer currentWorkspaceId={currentWorkspaceId} />;
+      case 'knowledge-graph':
+        return currentWorkspaceId ? <KnowledgeGraph workspaceId={currentWorkspaceId} /> : <div>Please select a workspace first</div>;
       case 'quiz':
         return <Quiz currentWorkspaceId={currentWorkspaceId} />;
       case 'progress':
@@ -107,6 +113,14 @@ const App: React.FC = () => {
       {/* Modals container */}
       <div id="modals-container"></div>
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 };
 

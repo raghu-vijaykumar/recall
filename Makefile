@@ -20,7 +20,7 @@ setup:
 	cd backend && .venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # Build the application
-build: test
+build: test kill
 	make build-frontend
 	make build-electron
 	make build-backend-pyinstaller
@@ -38,7 +38,23 @@ dist: clean build
 
 # Run tests only
 test:
+	make test-backend
+	make test-frontend
+
+# Run backend tests only
+test-backend:
+ifdef BYPASS_COVERAGE
 	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest tests/ -v
+else
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cov=app --cov-fail-under=69 tests/ -v
+endif
+# Run frontend tests only
+test-frontend:
+ifdef BYPASS_COVERAGE
+	npm run test:frontend
+else
+	npm run test:frontend:coverage
+endif
 
 # Build frontend
 build-frontend:
@@ -50,7 +66,7 @@ build-electron:
 
 # Build backend with PyInstaller
 build-backend-pyinstaller:
-	cd backend && python -m venv .venv-build && .\.venv-build\Scripts\python.exe -m ensurepip --default-pip && .\.venv-build\Scripts\pip.exe install pyinstaller && .\.venv-build\Scripts\pip.exe install -r requirements.txt && .\.venv-build\Scripts\python.exe -m PyInstaller --onefile --name recall-backend main.py --hidden-import uvicorn --collect-all uvicorn --add-data "app/static;app/static" --add-data "migrations;migrations"
+	cd backend && python -m venv .venv-build && .\.venv-build\Scripts\python.exe -m ensurepip --default-pip && .\.venv-build\Scripts\pip.exe install pyinstaller && .\.venv-build\Scripts\pip.exe install -r requirements.txt && .\.venv-build\Scripts\python.exe -m PyInstaller --onefile --name recall-backend main.py --hidden-import uvicorn --hidden-import aiosqlite --collect-all uvicorn --add-data "app/static;app/static" --add-data "migrations;migrations"
 
 # Clean build artifacts
 clean:
@@ -61,32 +77,26 @@ clean:
 
 # Start development with cleanup
 start: build
-	@echo Killing processes on ports 8000, 8001, 8002...
-	-@for %%p in (8000 8001 8002) do ( \
-		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do ( \
-			@echo Attempting to kill process %%a on port %%p \
-			taskkill /PID %%a /F 2>nul || echo Failed to kill process %%a \
-		) \
-	)
-	@echo Killing recall-backend.exe if running...
-	-@taskkill /IM recall-backend.exe /F >nul 2>&1 || echo recall-backend.exe not running
 	@echo Starting Electron Forge...
 	npx electron-forge start
 
 # Full clean, rebuild, and install
 install: dist
-	@echo Killing processes...
-	@taskkill /IM recall.exe /F >nul 2>&1 || echo recall.exe not running
-	@taskkill /IM electron.exe /F >nul 2>&1 || echo electron.exe not running
-	@taskkill /IM recall-backend.exe /F >nul 2>&1 || echo recall-backend.exe not running
-	@for %%p in (8000 8001 8002) do ( \
-		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do ( \
-			taskkill /PID %%a /F >nul 2>&1 \
-			@echo Killed process %%a on port %%p \
-		) \
-	)
 	@echo Removing old app data...
 	@npx rimraf "C:\Users\%USERNAME%\AppData\Local\recall"
 	@npx rimraf "C:\Users\%USERNAME%\AppData\Roaming\recall"
 	@echo Build successful. Launching installer...
 	@start "" "out\make\squirrel.windows\x64\recall-1.0.0 Setup.exe"
+
+
+kill: 
+	@echo Killing processes...
+	@taskkill /IM recall.exe /F >nul 2>&1 || echo recall.exe not running
+	@taskkill /IM electron.exe /F >nul 2>&1 || echo electron.exe not running
+	@taskkill /IM recall-backend.exe /F >nul 2>&1 || echo recall-backend.exe not running
+	-@for %%p in (8000 8001 8002) do ( \
+		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do ( \
+			taskkill /PID %%a /F >nul 2>&1 \
+			@echo Killed process %%a on port %%p \
+		) \
+	)

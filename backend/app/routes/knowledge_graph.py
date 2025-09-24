@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from ..database import get_db
-from ..services import KnowledgeGraphService
+from ..services import KnowledgeGraphService, WorkspaceAnalysisService
 from ..models import ConceptCreate, RelationshipCreate, ConceptFileCreate
 
 router = APIRouter(prefix="/api/knowledge-graph", tags=["knowledge-graph"])
@@ -70,13 +70,36 @@ async def analyze_workspace(
     """
     Trigger workspace analysis to extract concepts and build knowledge graph
     """
-    # This would integrate with a workspace analysis service
-    # For now, return a placeholder response
-    return {
-        "status": "analysis_started",
-        "task_id": f"analysis_{workspace_id}_{hash(str(file_paths))}",
-        "message": "Workspace analysis initiated",
-    }
+    # Get workspace path from database
+    workspace_query = text("SELECT path FROM workspaces WHERE id = :workspace_id")
+    result = await db.execute(workspace_query, {"workspace_id": workspace_id})
+    workspace_record = result.fetchone()
+
+    if not workspace_record:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    workspace_path = workspace_record.path
+
+    # Initialize analysis service
+    analysis_service = WorkspaceAnalysisService(db)
+
+    try:
+        # Run analysis
+        results = await analysis_service.analyze_workspace(
+            workspace_id=workspace_id,
+            workspace_path=workspace_path,
+            force_reanalysis=force_reanalysis,
+            file_paths=file_paths,
+        )
+
+        return {
+            "status": "analysis_completed",
+            "task_id": f"analysis_{workspace_id}_{hash(str(file_paths))}",
+            "results": results,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
 @router.get("/workspaces/{workspace_id}/graph", response_model=KnowledgeGraphResponse)
@@ -145,22 +168,77 @@ async def get_workspace_suggested_topics(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get suggested topics for a workspace
+    Get suggested topics for a workspace using hybrid scoring algorithm
     """
+    from datetime import datetime, timedelta
+    import math
+
     kg_service = KnowledgeGraphService(db)
 
     # Get workspace concepts with relevance scores
     workspace_concepts = await kg_service.get_workspace_concepts(workspace_id)
 
-    # Simple scoring: sort by relevance and recency
+    if not workspace_concepts:
+        return {"topics": []}
+
+    # Calculate hybrid scores for each concept
+    now = datetime.utcnow()
+    tau_days = 7  # Decay constant for recency
+
+    scored_concepts = []
+    for wc in workspace_concepts:
+        concept = wc["concept"]
+        relevance_score = wc["relevance_score"] or 0.5
+        last_accessed = wc["last_accessed_at"]
+
+        # Frequency score (normalized relevance)
+        F = relevance_score
+
+        # Recency score (exponential decay)
+        if last_accessed:
+            delta_days = (now - last_accessed).days
+            R = math.exp(-delta_days / tau_days)
+        else:
+            R = 0.1  # Low score for never accessed
+
+        # Semantic similarity score (simplified - would use embeddings in production)
+        # For now, use concept relationships as proxy
+        relationships = await kg_service.get_relationships_for_concept(
+            concept.concept_id
+        )
+        centrality = len(relationships) / max(1, len(workspace_concepts))
+        S = min(0.8, centrality * 2)  # Scale centrality to similarity score
+
+        # Hybrid score with weights (configurable)
+        w_f, w_r, w_s = 0.4, 0.3, 0.3  # frequency, recency, semantic
+        total_score = w_f * F + w_r * R + w_s * S
+
+        scored_concepts.append(
+            {
+                "concept": concept,
+                "score": total_score,
+                "frequency_score": F,
+                "recency_score": R,
+                "semantic_score": S,
+            }
+        )
+
+    # Sort by total score and return top suggestions
+    scored_concepts.sort(key=lambda x: x["score"], reverse=True)
+
     suggestions = []
-    for wc in workspace_concepts[:limit]:
+    for sc in scored_concepts[:limit]:
         suggestions.append(
             {
-                "concept_id": wc["concept"].concept_id,
-                "name": wc["concept"].name,
-                "relevance_score": wc["relevance_score"] or 0.5,
-                "description": wc["concept"].description,
+                "concept_id": sc["concept"].concept_id,
+                "name": sc["concept"].name,
+                "relevance_score": sc["score"],
+                "description": sc["concept"].description,
+                "score_breakdown": {
+                    "frequency": sc["frequency_score"],
+                    "recency": sc["recency_score"],
+                    "semantic": sc["semantic_score"],
+                },
             }
         )
 

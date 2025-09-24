@@ -47,6 +47,18 @@ ALTER TABLE questions ADD COLUMN generation_prompt TEXT;
 ALTER TABLE questions ADD COLUMN confidence_score REAL;
 ALTER TABLE questions ADD COLUMN kg_concept_ids TEXT; -- JSON array of concept IDs
 
+-- Create answers table for tracking individual question performance
+CREATE TABLE IF NOT EXISTS answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL,
+    answer_text TEXT NOT NULL,
+    is_correct BOOLEAN NOT NULL,
+    time_taken INTEGER NOT NULL, -- Time in seconds
+    confidence_level INTEGER, -- User's confidence rating (1-5)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+
 -- Create spaced_repetition_data table for spaced repetition algorithm
 CREATE TABLE IF NOT EXISTS spaced_repetition_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,5 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_conc
 CREATE INDEX IF NOT EXISTS idx_concept_files_concept ON concept_files(concept_id);
 CREATE INDEX IF NOT EXISTS idx_concept_files_file ON concept_files(file_id);
 CREATE INDEX IF NOT EXISTS idx_concept_files_workspace ON concept_files(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_answers_question ON answers(question_id);
+CREATE INDEX IF NOT EXISTS idx_answers_created_at ON answers(created_at);
 CREATE INDEX IF NOT EXISTS idx_spaced_repetition_question ON spaced_repetition_data(question_id);
 CREATE INDEX IF NOT EXISTS idx_spaced_repetition_next_review ON spaced_repetition_data(next_review);

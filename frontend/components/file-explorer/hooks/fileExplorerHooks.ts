@@ -12,7 +12,7 @@ export const useFileExplorerState = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [activeView, setActiveView] = useState<'explorer' | 'search'>('explorer');
+  const [activeView, setActiveView] = useState<'explorer' | 'search' | 'progress' | 'knowledge-graph' | 'quiz' | 'chat'>('explorer');
   const monacoEditorRef = useRef<MonacoEditor | null>(null);
 
   // File operations state

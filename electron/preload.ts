@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("menuEvents", {
       'menu-refresh-files',
       'menu-show-workspaces',
       'menu-show-files',
+      'menu-show-knowledge-graph',
       'menu-show-quiz',
       'menu-show-progress',
       'menu-toggle-theme',

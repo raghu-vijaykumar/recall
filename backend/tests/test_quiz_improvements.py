@@ -4,7 +4,7 @@ Tests for Quiz Improvements functionality
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +27,7 @@ class TestSpacedRepetitionEngine:
             interval_days=1,
             review_count=0,
             quality=5,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor == 2.6  # 2.5 + (0.1 - 0.0)
@@ -39,7 +39,7 @@ class TestSpacedRepetitionEngine:
             interval_days=1,
             review_count=1,
             quality=4,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor == 2.6  # 2.6 + (0.1 - 0.1) = 2.6 + 0.0 = 2.6
@@ -51,7 +51,7 @@ class TestSpacedRepetitionEngine:
             interval_days=6,
             review_count=2,
             quality=3,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor == 2.58  # 2.68 + (0.1 - 0.2) = 2.68 - 0.1 = 2.58
@@ -69,7 +69,7 @@ class TestSpacedRepetitionEngine:
             interval_days=10,
             review_count=3,
             quality=2,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor == 2.3  # max(1.3, 2.5 - 0.2)
@@ -87,7 +87,7 @@ class TestSpacedRepetitionEngine:
             interval_days=1,
             review_count=0,
             quality=2,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor == 1.3  # Minimum bound
@@ -98,7 +98,7 @@ class TestSpacedRepetitionEngine:
             interval_days=1,
             review_count=0,
             quality=5,
-            last_review=datetime.utcnow(),
+            last_review=datetime.now(UTC),
         )
 
         assert ease_factor <= 3.0  # Maximum bound
@@ -220,7 +220,7 @@ class TestQuizService:
             saved_question = await quiz_service._save_question(question_data)
 
             # Create spaced repetition data that's due
-            past_date = datetime.utcnow() - timedelta(days=1)
+            past_date = datetime.now(UTC) - timedelta(days=1)
             await quiz_service.update_spaced_repetition(
                 question_id=saved_question.id, answer_quality=5
             )
@@ -264,7 +264,7 @@ class TestQuizService:
             )
             await session.execute(
                 file_query,
-                {"created_at": datetime.utcnow(), "updated_at": datetime.utcnow()},
+                {"created_at": datetime.now(UTC), "updated_at": datetime.now(UTC)},
             )
             await session.commit()
 
