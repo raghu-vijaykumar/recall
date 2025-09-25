@@ -6,6 +6,7 @@ import fs from "fs";
 import fsp from "fs/promises"; // Import fs.promises for async file operations
 import mime from "mime-types"; // Import mime-types for better MIME detection
 import log from 'electron-log'; // Import electron-log
+import http from "http";
 
 // Configure electron-log
 log.transports.file.level = 'info';
@@ -47,6 +48,10 @@ async function copyDirectory(source: string, destination: string): Promise<void>
 // Global variables for backend management
 let backendProcess: any = null;
 let backendReady = false;
+
+// Global variables for file streaming server
+let fileServer: http.Server | null = null;
+let fileServerPort: number = 0;
 
 // Backend management functions
 function setupDatabase() {
@@ -177,6 +182,120 @@ function stopBackend(): Promise<void> {
   });
 }
 
+// File streaming server functions
+function startFileServer(workspacePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    // Find an available port starting from 3000
+    let port = 3000;
+    const maxPort = 3100;
+
+    const tryPort = (currentPort: number) => {
+      if (currentPort > maxPort) {
+        reject(new Error('No available ports for file server'));
+        return;
+      }
+
+      const server = http.createServer(async (req, res) => {
+        if (!req.url) {
+          res.writeHead(400);
+          res.end('Bad Request');
+          return;
+        }
+
+        try {
+          // Decode URL and construct file path
+          const decodedPath = decodeURIComponent(req.url);
+          const filePath = path.join(workspacePath, decodedPath);
+
+          // Security check: ensure the file is within the workspace
+          const resolvedPath = path.resolve(filePath);
+          const resolvedWorkspace = path.resolve(workspacePath);
+
+          if (!resolvedPath.startsWith(resolvedWorkspace)) {
+            res.writeHead(403);
+            res.end('Forbidden');
+            return;
+          }
+
+          // Check if file exists
+          const stats = await fsp.stat(filePath);
+          if (!stats.isFile()) {
+            res.writeHead(404);
+            res.end('Not Found');
+            return;
+          }
+
+          // Set appropriate headers with custom MIME type handling
+          let mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+          // Handle MKV files specifically (mime-types library may not recognize them)
+          if (filePath.toLowerCase().endsWith('.mkv')) {
+            mimeType = 'video/x-matroska';
+          }
+
+          res.writeHead(200, {
+            'Content-Type': mimeType,
+            'Content-Length': stats.size,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'no-cache'
+          });
+
+          // Stream the file
+          const fileStream = fs.createReadStream(filePath);
+          fileStream.pipe(res);
+
+          fileStream.on('error', (error) => {
+            log.error('File streaming error:', error);
+            if (!res.headersSent) {
+              res.writeHead(500);
+              res.end('Internal Server Error');
+            }
+          });
+
+        } catch (error) {
+          log.error('File server error:', error);
+          if (!res.headersSent) {
+            res.writeHead(404);
+            res.end('Not Found');
+          }
+        }
+      });
+
+      server.listen(currentPort, '127.0.0.1', () => {
+        log.info(`File streaming server started on port ${currentPort}`);
+        fileServer = server;
+        fileServerPort = currentPort;
+        resolve(currentPort);
+      });
+
+      server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          tryPort(currentPort + 1);
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    tryPort(port);
+  });
+}
+
+function stopFileServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (fileServer) {
+      log.info('Stopping file streaming server...');
+      fileServer.close(() => {
+        fileServer = null;
+        fileServerPort = 0;
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+}
+
 let currentWorkspacePath: string | null = null;
 let fileWatcher: fs.FSWatcher | null = null;
 
@@ -210,16 +329,22 @@ const createWindow = () => {
   return win;
 };
 
-function setupFileWatcher(workspacePath: string) {
+async function setupFileWatcher(workspacePath: string) {
   // Clean up existing watcher
   if (fileWatcher) {
     fileWatcher.close();
     fileWatcher = null;
   }
 
+  // Stop existing file server
+  await stopFileServer();
+
   currentWorkspacePath = workspacePath;
 
   try {
+    // Start file streaming server for the workspace
+    await startFileServer(workspacePath);
+
     fileWatcher = fs.watch(workspacePath, { recursive: true }, (eventType, filename) => {
       if (filename) {
         // Send file system change event to renderer
@@ -234,9 +359,9 @@ function setupFileWatcher(workspacePath: string) {
       }
     });
 
-    log.info(`File watcher set up for workspace: ${workspacePath}`);
+    log.info(`File watcher and streaming server set up for workspace: ${workspacePath}`);
   } catch (error) {
-    log.error(`Failed to set up file watcher for ${workspacePath}:`, error);
+    log.error(`Failed to set up file watcher/server for ${workspacePath}:`, error);
   }
 }
 
@@ -460,16 +585,11 @@ ipcMain.handle("get-folder-tree", async (event, folderPath: string) => {
                 children: children
               });
             } else {
-              // Only include text-based files
-              const ext = path.extname(entry.name).toLowerCase();
-              const textExtensions = ['.txt', '.md', '.markdown', '.py', '.js', '.ts', '.html', '.css', '.json', '.xml', '.yml', '.yaml'];
-              if (textExtensions.includes(ext) || !ext) {
-                items.push({
-                  name: entry.name,
-                  path: itemRelativePath,
-                  type: 'file'
-                });
-              }
+              items.push({
+                name: entry.name,
+                path: itemRelativePath,
+                type: 'file'
+              });
             }
           }
         } catch (error) {
@@ -500,6 +620,38 @@ ipcMain.handle("read-file-content", async (event, filePath: string) => {
       log.error(`Failed to read file ${filePath}:`, error);
       throw new Error(`Failed to read file: ${error}`);
     }
+  });
+
+ipcMain.handle("read-file-base64", async (event, filePath: string) => {
+    try {
+      const buffer = await fsp.readFile(filePath);
+      const base64 = buffer.toString('base64');
+      const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+      return { base64, mimeType };
+    } catch (error) {
+      log.error(`Failed to read file as base64 ${filePath}:`, error);
+      throw new Error(`Failed to read file: ${error}`);
+    }
+  });
+
+ipcMain.handle("get-file-stats", async (event, filePath: string) => {
+    try {
+      const stats = await fsp.stat(filePath);
+      return {
+        size: stats.size,
+        mtime: stats.mtime,
+        ctime: stats.ctime,
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile()
+      };
+    } catch (error) {
+      log.error(`Failed to get stats for file ${filePath}:`, error);
+      throw new Error(`Failed to get file stats: ${error}`);
+    }
+  });
+
+ipcMain.handle("get-file-server-port", () => {
+    return fileServerPort;
   });
 
 ipcMain.handle("file-operations:create", async (event, { basePath, type, name }: { basePath: string; type: 'file' | 'directory'; name: string }) => {
@@ -608,7 +760,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", async (event) => {
   event.preventDefault();
-  await stopBackend();
+  //await stopBackend();
   app.quit();
 });
 

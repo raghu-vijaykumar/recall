@@ -20,7 +20,8 @@ declare global {
     electronAPI: {
       readHtmlFile: (filePath: string) => Promise<string>;
       getFolderTree: (folderPath: string) => Promise<any[]>;
-      readFileContent: (filePath: string) => Promise<string>;
+    readFileContent: (filePath: string) => Promise<string>;
+    readFileBase64: (filePath: string) => Promise<{ base64: string; mimeType: string }>;
 
       // File operations
       createFile: (basePath: string, name: string) => Promise<{ success: boolean; path: string }>;

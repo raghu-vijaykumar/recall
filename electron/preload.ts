@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readHtmlFile: (filePath: string) => ipcRenderer.invoke("read-html-file", filePath),
   getFolderTree: (folderPath: string) => ipcRenderer.invoke("get-folder-tree", folderPath),
   readFileContent: (filePath: string) => ipcRenderer.invoke("read-file-content", filePath),
+  readFileBase64: (filePath: string) => ipcRenderer.invoke("read-file-base64", filePath),
+  getFileStats: (filePath: string) => ipcRenderer.invoke("get-file-stats", filePath),
+  getFileServerPort: () => ipcRenderer.invoke("get-file-server-port"),
 
   // File operations
   createFile: (basePath: string, name: string) => ipcRenderer.invoke("file-operations:create", { basePath, type: 'file', name }),

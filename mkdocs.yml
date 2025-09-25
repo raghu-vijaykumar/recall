@@ -1,0 +1,15 @@
+site_name: Recall Wiki
+docs_dir: wiki
+nav:
+  - Home: index.md
+  - BUILD: BUILD.md
+  - PACKAGING: PACKAGING.md
+  - Design:
+      - Backend: design/backend-design.md
+      - Frontend: design/frontend-design.md
+      - Electron: design/electron-design.md
+      - Features:
+          - Directory Structure and Build: design/feature/directory-structure-and-build.md
+          - Knowledge Graph: design/feature/knowledge-graph.md
+          - Quiz Generation Improvements: design/feature/quiz-generation-improvements.md
+theme: readthedocs

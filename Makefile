@@ -1,23 +1,26 @@
-.PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller
+.PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve
 
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  setup    - Install dependencies and set up Python virtual environment"
-	@echo "  build    - Build the application (runs tests first)"
-	@echo "  dev      - Run in development mode"
-	@echo "  dist     - Create distributable package"
-	@echo "  test     - Run backend tests only"
-	@echo "  clean    - Clean build artifacts"
-	@echo "  start    - Start development with process cleanup"
-	@echo "  install  - Full clean, rebuild, and install"
-	@echo "  help     - Show this help message"
+	@echo "  setup      - Install dependencies and set up Python virtual environment"
+	@echo "  build      - Build the application (runs tests first)"
+	@echo "  dev        - Run in development mode"
+	@echo "  dist       - Create distributable package"
+	@echo "  test       - Run backend tests only"
+	@echo "  clean      - Clean build artifacts"
+	@echo "  start      - Start development with process cleanup"
+	@echo "  install    - Full clean, rebuild, and install"
+	@echo "  wiki-build - Build the wiki documentation site"
+	@echo "  wiki-serve - Serve the wiki documentation site locally"
+	@echo "  help       - Show this help message"
 
 # Setup dependencies
 setup:
 	npm install
 	cd backend && python -m venv .venv
 	cd backend && .venv\Scripts\python.exe -m pip install -r requirements.txt
+	cd backend && .venv\Scripts\python.exe -m pip install mkdocs
 
 # Build the application
 build: test kill
@@ -89,7 +92,7 @@ install: dist
 	@start "" "out\make\squirrel.windows\x64\recall-1.0.0 Setup.exe"
 
 
-kill: 
+kill:
 	@echo Killing processes...
 	@taskkill /IM recall.exe /F >nul 2>&1 || echo recall.exe not running
 	@taskkill /IM electron.exe /F >nul 2>&1 || echo electron.exe not running
@@ -100,3 +103,14 @@ kill:
 			@echo Killed process %%a on port %%p \
 		) \
 	)
+
+# Build wiki documentation site
+wiki-build:
+	@echo "Building wiki documentation..."
+	cd backend && .\.venv\Scripts\activate.bat && cd .. && mkdocs build
+
+# Serve wiki documentation site locally
+wiki-serve:
+	@echo "Serving wiki documentation on http://127.0.0.1:8000"
+	@echo "Press Ctrl+C to stop the server"
+	cd backend && .\.venv\Scripts\activate.bat && cd .. && mkdocs serve --dev-addr=127.0.0.1:8000

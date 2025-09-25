@@ -18,6 +18,8 @@ import FileSearch from './components/FileSearch';
 import EditorTabs from './components/EditorTabs';
 import FileOperationModals from './components/FileOperationModals';
 import FileContextMenu from './components/FileContextMenu';
+import MarkdownEditor from './components/MarkdownEditor';
+import NonTextViewer from './components/NonTextViewer.js';
 import Progress from '../progress/Progress';
 import Quiz from '../quiz/Quiz';
 import { KnowledgeGraph } from '../knowledge-graph/KnowledgeGraph';
@@ -166,6 +168,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
     setOpenFiles,
     setActiveFileId
   );
+
+  // Check if active file is a markdown file
+  const activeFile = openFiles.find(file => file.id === activeFileId);
+  const isMarkdownFile = activeFile && (activeFile.name.endsWith('.md') || activeFile.name.endsWith('.markdown'));
+  const isNonTextFile = activeFile && (/\.(jpg|jpeg|png|gif|bmp|webp|svg|pdf|mp4|avi|mov|mkv|webm|flv|wmv|mpg|mpeg|3gp|m4v|mp3|wav|ogg|flac|aac|m4a|wma|aiff|au)$/i.test(activeFile.name));
 
 
 
@@ -350,8 +357,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
           />
 
           <div className="editor-container">
-            <div id="monaco-editor" className="monaco-editor"></div>
-            {openFiles.length === 0 && (
+            {openFiles.length === 0 ? (
               <div className="welcome-screen">
                 <div className="welcome-content">
                   <h2>Welcome to Recall</h2>
@@ -366,6 +372,17 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ currentWorkspaceId }) => {
                   </div>
                 </div>
               </div>
+            ) : isMarkdownFile && activeFile ? (
+              <MarkdownEditor
+                activeFile={activeFile}
+                monacoEditorRef={monacoEditorRef}
+              />
+            ) : isNonTextFile && activeFile ? (
+              <NonTextViewer
+                activeFile={activeFile.file}
+              />
+            ) : (
+              <div id="monaco-editor" className="monaco-editor"></div>
             )}
           </div>
         </div>

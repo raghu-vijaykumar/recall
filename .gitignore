@@ -150,3 +150,4 @@ backend/dist/
 backend/build/
 backend/recall-backend.spec
 backend/.coverage
+site/

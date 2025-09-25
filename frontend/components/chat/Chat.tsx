@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { API_BASE } from '../../src/core/api';
+import RichMarkdownRenderer from '../../src/shared/RichMarkdownRenderer';
 
 interface Message {
   id: string;
@@ -92,7 +93,7 @@ const Chat: React.FC<ChatProps> = ({ currentWorkspaceId }) => {
                 className={`message ${message.role === 'user' ? 'user-message' : 'assistant-message'}`}
               >
                 <div className="message-content">
-                  {message.content}
+                  <RichMarkdownRenderer content={message.content} />
                 </div>
                 <div className="message-timestamp">
                   {message.timestamp.toLocaleTimeString()}
