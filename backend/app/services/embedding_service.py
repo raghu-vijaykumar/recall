@@ -2,7 +2,7 @@
 Embedding Service for managing text embeddings and vector storage with ChromaDB
 """
 
-from logging import log
+import logging
 import os
 import json
 import asyncio
@@ -130,7 +130,7 @@ class EmbeddingService:
         self.model_switch_in_progress = False
 
     async def initialize(
-        self, model_name: str = "nomic-ai/nomic-embed-text-v1.5"
+        self, model_name: str = "sentence-transformers/all-MiniLM-L12-v2"
     ) -> bool:
         """
         Initialize with a specific embedding model
@@ -148,7 +148,9 @@ class EmbeddingService:
 
             # Detect available device (GPU if available, otherwise CPU)
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            log.info(f"Initializing embedding model '{model_name}' on device: {device}")
+            logging.info(
+                f"Initializing embedding model '{model_name}' on device: {device}"
+            )
 
             # Load model (this can take time)
             self.current_model = SentenceTransformer(model_name, device=device)

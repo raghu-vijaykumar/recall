@@ -16,7 +16,7 @@ from app.services.file_service import FileService
 from app.services.database import DatabaseService
 from app.services.workspace_analysis_service import WorkspaceAnalysisService
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db
+from ..database import get_db
 
 # Create router
 router = APIRouter()

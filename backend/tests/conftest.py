@@ -6,20 +6,21 @@ from fastapi.staticfiles import StaticFiles
 import os
 import tempfile
 import uuid
+import asyncio
 from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 # Import routes
-from app.routes.workspaces import router as workspaces_router
-from app.routes.files import router as files_router
-from app.routes.quiz import router as quiz_router
-from app.routes.progress import router as progress_router
-from app.routes.search import router as search_router
-from app.routes.knowledge_graph import router as knowledge_graph_router
+from backend.app.routes.workspaces import router as workspaces_router
+from backend.app.routes.files import router as files_router
+from backend.app.routes.quiz import router as quiz_router
+from backend.app.routes.progress import router as progress_router
+from backend.app.routes.search import router as search_router
+from backend.app.routes.knowledge_graph import router as knowledge_graph_router
 
 # Import migration service for test database setup
-from app.services.migration_service import MigrationService
+from backend.app.services.migration_service import MigrationService
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -105,4 +106,7 @@ def db_session():
         bind=engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    return async_session_factory
+    yield async_session_factory
+
+    # Properly close the async engine to avoid ResourceWarning
+    asyncio.run(engine.dispose())

@@ -8,7 +8,9 @@ def test_extract_concepts_from_file():
     """Test the concept extraction from a flattened workspace file"""
 
     # Get the path to the test resource
-    test_resource_dir = os.path.join(os.path.dirname(__file__), "resources")
+    test_resource_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "resources"
+    )
     flattened_file = os.path.join(test_resource_dir, "flattened_workspace.txt")
 
     # Create a temporary output file

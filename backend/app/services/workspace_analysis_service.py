@@ -36,6 +36,9 @@ except ImportError:
     NLP_AVAILABLE = False
     logging.warning("spaCy, NLTK, or KeyBERT not available. Using fallback methods.")
 
+# Import concept extraction classes
+from .concept_extraction.extractors import HeuristicExtractor
+
 
 class WorkspaceAnalysisService:
     """
@@ -85,6 +88,29 @@ class WorkspaceAnalysisService:
         # Thread pool for CPU-intensive tasks
         self.executor = ThreadPoolExecutor(max_workers=4)
 
+    def _preprocess_text(self, text: str) -> str:
+        """Clean and preprocess text content"""
+        if not text:
+            return ""
+
+        # Remove markdown formatting
+        text = re.sub(r"#+\s*", "", text)  # Headers
+        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)  # Bold
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)  # Italic
+        text = re.sub(r"`([^`]+)`", r"\1", text)  # Code
+        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)  # Links
+
+        # Remove code blocks
+        text = re.sub(r"```[\s\S]*?```", "", text)
+
+        # Normalize whitespace
+        text = re.sub(r"\s+", " ", text)
+
+        # Remove extra whitespace
+        text = text.strip()
+
+        return text
+
     def _load_non_concept_words(self) -> Set[str]:
         """Load non-concept words from external file"""
         non_concept_words = set()
@@ -113,6 +139,7 @@ class WorkspaceAnalysisService:
         force_reanalysis: bool = False,
         file_paths: Optional[List[str]] = None,
         progress_callback: Optional[callable] = None,
+        use_flattened_file: bool = False,
     ) -> Dict[str, Any]:
         """
         Analyze a workspace using optimized batched processing with embeddings.
@@ -414,29 +441,6 @@ class WorkspaceAnalysisService:
         except Exception:
             return ""
 
-    def _preprocess_text(self, text: str) -> str:
-        """Clean and preprocess text content"""
-        if not text:
-            return ""
-
-        # Remove markdown formatting
-        text = re.sub(r"#+\s*", "", text)  # Headers
-        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)  # Bold
-        text = re.sub(r"\*([^*]+)\*", r"\1", text)  # Italic
-        text = re.sub(r"`([^`]+)`", r"\1", text)  # Code
-        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)  # Links
-
-        # Remove code blocks
-        text = re.sub(r"```[\s\S]*?```", "", text)
-
-        # Normalize whitespace
-        text = re.sub(r"\s+", " ", text)
-
-        # Remove extra whitespace
-        text = text.strip()
-
-        return text
-
     def _extract_concepts(self, text: str) -> List[Dict[str, Any]]:
         """
         Extract concepts from text using simple heuristics
@@ -666,432 +670,157 @@ class WorkspaceAnalysisService:
 
     def _extract_concepts_fallback(self, content: str) -> List[Dict[str, Any]]:
         """
-        Fallback concept extraction using heuristics when NLP libraries are unavailable
+        Fallback concept extraction using HeuristicExtractor when NLP libraries are unavailable
         """
-        concepts = []
+        # Use HeuristicExtractor for concept extraction
+        extractor = HeuristicExtractor(stop_words=self.non_concept_words)
 
-        # Split content into lines for line tracking
+        # Extract concepts
+        concepts = extractor.extract_concepts(content)
+
+        # Convert to the expected format with additional metadata
+        formatted_concepts = []
         lines = content.split("\n")
 
-        # Process each line to find concepts
-        for line_num, line in enumerate(lines):
-            if not line.strip():
-                continue
+        for concept in concepts:
+            # Find line number for this concept
+            line_num = self._find_line_for_concept(concept, lines)
 
-            # Clean the line for concept extraction
-            cleaned_line = self._preprocess_text(line)
-            if len(cleaned_line) < 5:  # Skip very short lines
-                continue
-
-            # Extract potential concepts from this line
-            line_concepts = self._extract_concepts_from_line(
-                cleaned_line, line_num, lines
+            # Get context around the concept (using HeuristicExtractor's method)
+            context_lines = extractor._get_context_lines(
+                lines, line_num, context_size=2
             )
+            context_text = "\n".join(context_lines)
 
-            concepts.extend(line_concepts)
+            formatted_concept = {
+                "name": concept["name"],
+                "description": f"Concept extracted from context: {context_text[:120]}...",
+                "snippet": context_text,
+                "score": concept.get("score", 0.8),
+                "start_line": line_num,
+                "end_line": line_num,
+            }
+            formatted_concepts.append(formatted_concept)
 
-        return concepts
+        return formatted_concepts
 
-    def _extract_concepts_from_line(
-        self, line: str, line_num: int, all_lines: List[str]
+    def _extract_concepts_fallback_for_flattened(
+        self, content: str
     ) -> List[Dict[str, Any]]:
         """
-        Extract concepts from a single line with line number tracking
-        Improved filtering to avoid gibberish and lorem ipsum content
+        Extract concepts from flattened files using the HeuristicExtractor.
         """
-        concepts = []
+        # Use HeuristicExtractor for concept extraction
+        extractor = HeuristicExtractor(stop_words=self.non_concept_words)
 
-        # Skip lines that look like lorem ipsum or template content
-        if self._is_lorem_ipsum_or_gibberish(line):
-            return concepts
+        # Extract concepts
+        concepts = extractor.extract_concepts(content)
 
-        # Extract potential multi-word concepts first
-        # Look for patterns like: "Machine Learning", "Design Pattern", "Abstract Factory"
-        multi_word_patterns = [
-            # Technical terms with multiple words
-            r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b",  # Title Case phrases
-            r"\b[a-z]+(?:\s+[a-z]+){1,3}\b",  # lowercase phrases (2-4 words)
-            # Domain-specific patterns
-            r"\b[A-Z][a-z]+\s+(?:Pattern|Algorithm|Method|Class|Interface|Framework|Library|Protocol|Database|System|Network|Security|Authentication|Authorization)\b",
-            r"\b(?:Design|Creational|Structural|Behavioral|Factory|Singleton|Observer|Strategy|Command|Adapter|Bridge|Composite|Decorator|Facade|Proxy|Template|Iterator|State|Memento|Visitor)\s+[A-Z][a-z]+\b",
-            # Programming concepts
-            r"\b(?:Object|Class|Method|Function|Variable|Constant|Interface|Abstract|Concrete|Static|Dynamic|Virtual|Override|Implement|Inherit|Constructor|Destructor|Exception|Thread|Process|Memory|Cache|Database|Query|Transaction)\s+[A-Z][a-z]+\b",
-            # Data structures and algorithms
-            r"\b(?:Linked|Binary|Search|Sort|Tree|Graph|Hash|Array|List|Stack|Queue|Heap|Trie|Bloom|Filter)\s+[A-Z][a-z]+\b",
-        ]
+        # Convert to the expected format with additional metadata
+        formatted_concepts = []
+        lines = content.split("\n")
 
-        for pattern in multi_word_patterns:
-            matches = re.findall(pattern, line)
-            for match in matches:
-                if self._is_meaningful_concept(match) and not self._is_gibberish_term(
-                    match
-                ):
-                    # Get broader context (surrounding lines)
-                    context_lines = self._get_context_lines(
-                        all_lines, line_num, context_size=2
-                    )
-                    context_text = "\n".join(context_lines)
+        for concept in concepts:
+            # Find line number for this concept
+            line_num = self._find_line_for_concept(concept, lines)
 
-                    score = self._calculate_concept_score(
-                        match, "\n".join(all_lines), context_text
-                    )
+            # Get context around the concept (using HeuristicExtractor's method)
+            context_lines = extractor._get_context_lines(
+                lines, line_num, context_size=2
+            )
+            context_text = "\n".join(context_lines)
 
-                    if score > 0.85:  # Higher threshold for multi-word concepts
-                        concepts.append(
-                            {
-                                "name": match,
-                                "description": f"Concept mentioned in context: {context_text[:120]}...",
-                                "snippet": context_text,
-                                "score": score,
-                                "start_line": line_num,
-                                "end_line": line_num,
-                            }
-                        )
+            formatted_concept = {
+                "name": concept["name"],
+                "description": f"Concept extracted from context: {context_text[:120]}...",
+                "snippet": context_text,
+                "score": concept.get("score", 0.8),
+                "start_line": line_num,
+                "end_line": line_num,
+            }
+            formatted_concepts.append(formatted_concept)
 
-        # Also extract high-quality single words (technical terms)
-        single_word_patterns = [
-            r"\b[A-Z][a-z]{6,}\b",  # Long capitalized words (likely specific terms)
-            r"\b[a-z]{7,}\b",  # Long lowercase words (technical terms)
-        ]
+        # Log top 100 ranked concepts
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Total concepts extracted with HeuristicExtractor: {len(formatted_concepts)}"
+        )
+        logging.info("[FLATTENED_ANALYSIS] Top 100 ranked concepts:")
+        for i, concept in enumerate(formatted_concepts[:100]):
+            logging.info(
+                f"[FLATTENED_ANALYSIS] #{i+1:2d}: {concept['name']} (score: {concept['score']:.3f})"
+            )
 
-        for pattern in single_word_patterns:
-            matches = re.findall(pattern, line)
-            for match in matches:
-                if self._is_meaningful_concept(match) and not self._is_gibberish_term(
-                    match
-                ):
-                    # Get broader context
-                    context_lines = self._get_context_lines(
-                        all_lines, line_num, context_size=1
-                    )
-                    context_text = "\n".join(context_lines)
+        # Return top 100 concepts
+        return formatted_concepts[:100]
 
-                    score = self._calculate_concept_score(
-                        match, "\n".join(all_lines), context_text
-                    )
-
-                    if score > 0.85:  # Higher threshold for single words
-                        concepts.append(
-                            {
-                                "name": match,
-                                "description": f"Concept mentioned in context: {context_text[:120]}...",
-                                "snippet": context_text,
-                                "score": score,
-                                "start_line": line_num,
-                                "end_line": line_num,
-                            }
-                        )
-
-        return concepts
-
-    def _get_context_lines(
-        self, all_lines: List[str], center_line: int, context_size: int = 2
-    ) -> List[str]:
+    def _find_line_for_concept(self, concept: Dict[str, Any], lines: List[str]) -> int:
         """
-        Get context lines around a center line
+        Find the line number where a concept appears in the text
         """
-        start = max(0, center_line - context_size)
-        end = min(len(all_lines), center_line + context_size + 1)
-        return all_lines[start:end]
+        concept_name = concept.get("name", "")
+        if not concept_name:
+            return 0
 
-    def _is_meaningful_concept(self, term: str) -> bool:
+        # Look for the concept name in the lines
+        for line_num, line in enumerate(lines):
+            if concept_name.lower() in line.lower():
+                return line_num
+
+        return 0
+
+    def _extract_concepts_heuristic_fallback(
+        self, content: str
+    ) -> List[Dict[str, Any]]:
         """
-        Check if a term is likely to be a meaningful concept
+        Fallback concept extraction using HeuristicExtractor
         """
-        if not term or len(term) < 4:
-            return False
+        # Use HeuristicExtractor for concept extraction
+        extractor = HeuristicExtractor(stop_words=self.non_concept_words)
 
-        term_lower = term.lower()
+        # Extract concepts
+        concepts = extractor.extract_concepts(content)
 
-        # Skip common non-concept words
-        if term_lower in self.non_concept_words:
-            return False
+        # Convert to the expected format with additional metadata
+        formatted_concepts = []
+        lines = content.split("\n")
 
-        # Must contain at least one letter
-        if not re.search(r"[a-zA-Z]", term):
-            return False
+        for concept in concepts:
+            # Find line number for this concept
+            line_num = self._find_line_for_concept(concept, lines)
 
-        # Skip if it's just numbers or symbols
-        if re.match(r"^[^a-zA-Z]*$", term):
-            return False
+            # Get context around the concept (using HeuristicExtractor's method)
+            context_lines = extractor._get_context_lines(
+                lines, line_num, context_size=2
+            )
+            context_text = "\n".join(context_lines)
 
-        return True
+            formatted_concept = {
+                "name": concept["name"],
+                "description": f"Concept extracted from context: {context_text[:120]}...",
+                "snippet": context_text,
+                "score": concept.get("score", 0.8),
+                "start_line": line_num,
+                "end_line": line_num,
+            }
+            formatted_concepts.append(formatted_concept)
 
-    def _is_lorem_ipsum_or_gibberish(self, line: str) -> bool:
-        """
-        Generic gibberish detection using statistical analysis
-        """
-        if not line or len(line.strip()) < 10:
-            return False
-
-        # Use combined quality assessment
-        quality = self._assess_content_quality(line)
-        return quality["is_gibberish"]
-
-    def _is_gibberish_term(self, term: str) -> bool:
-        """
-        Generic term gibberish detection using statistical analysis
-        """
-        if not term or len(term) < 3:
-            return False
-
-        # Use combined quality assessment for the term
-        quality = self._assess_content_quality(term)
-        return quality["is_gibberish"]
-
-    def _assess_content_quality(self, text: str) -> dict:
-        """
-        Combined quality assessment using multiple statistical measures
-        """
-        if not text or len(text.strip()) < 5:
-            return {"quality_score": 0.0, "is_gibberish": True}
-
-        # Run all statistical analyses
-        char_entropy = self._calculate_text_entropy(text)
-        word_entropy = self._calculate_word_entropy(text)
-        repetition_score = self._detect_repetitive_patterns(text)
-        word_dist = self._analyze_word_distribution(text)
-        word_len = self._analyze_word_lengths(text)
-        gini_coefficient = self._analyze_stop_word_ratio(text)
-        template_score = self._detect_template_patterns(text)
-
-        # Weighted quality score (0.0 = gibberish, 1.0 = high quality)
-        quality_score = (
-            (char_entropy / 5.0) * 0.2  # Character entropy
-            + (word_entropy / 8.0) * 0.2  # Word entropy
-            + (1.0 - repetition_score) * 0.2  # Low repetition = good
-            + (1.0 - word_dist["gibberish_score"]) * 0.15  # Word distribution
-            + word_len["coherence_score"] * 0.15  # Word length coherence
-            + (1.0 - gini_coefficient) * 0.05  # Even word distribution
-            + (1.0 - template_score) * 0.05  # Low template similarity
+        # Rank concepts by score and log top 100
+        ranked_concepts = sorted(
+            formatted_concepts, key=lambda x: x["score"], reverse=True
         )
 
-        # Clamp to [0, 1]
-        quality_score = max(0.0, min(1.0, quality_score))
+        # Log top 100 ranked concepts
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Total concepts extracted with HeuristicExtractor fallback: {len(ranked_concepts)}"
+        )
+        logging.info("[FLATTENED_ANALYSIS] Top 100 ranked concepts (fallback):")
+        for i, concept in enumerate(ranked_concepts[:100]):
+            logging.info(
+                f"[FLATTENED_ANALYSIS] #{i+1:2d}: {concept['name']} (score: {concept['score']:.3f})"
+            )
 
-        return {
-            "quality_score": quality_score,
-            "is_gibberish": quality_score < 0.3,  # Threshold for gibberish
-            "char_entropy": char_entropy,
-            "word_entropy": word_entropy,
-            "repetition_score": repetition_score,
-            "gini_coefficient": gini_coefficient,
-            "template_score": template_score,
-        }
-
-    def _calculate_text_entropy(self, text: str) -> float:
-        """Calculate Shannon entropy of text characters"""
-        if not text:
-            return 0.0
-
-        # Count character frequencies
-        char_counts = {}
-        for char in text:
-            char_counts[char] = char_counts.get(char, 0) + 1
-
-        # Calculate entropy
-        entropy = 0.0
-        text_length = len(text)
-        for count in char_counts.values():
-            probability = count / text_length
-            entropy -= probability * math.log2(probability)
-
-        return entropy
-
-    def _calculate_word_entropy(self, text: str) -> float:
-        """Calculate entropy based on word distribution"""
-        words = re.findall(r"\b\w+\b", text.lower())
-        if len(words) < 3:
-            return 0.0
-
-        word_counts = {}
-        for word in words:
-            word_counts[word] = word_counts.get(word, 0) + 1
-
-        entropy = 0.0
-        total_words = len(words)
-        for count in word_counts.values():
-            prob = count / total_words
-            entropy -= prob * math.log2(prob)
-
-        return entropy
-
-    def _detect_repetitive_patterns(self, text: str, n: int = 3) -> float:
-        """Detect repetitive n-gram patterns"""
-        words = re.findall(r"\b\w+\b", text.lower())
-        if len(words) < n * 2:
-            return 0.0
-
-        # Generate n-grams
-        ngrams = []
-        for i in range(len(words) - n + 1):
-            ngrams.append(" ".join(words[i : i + n]))
-
-        # Count n-gram frequencies
-        ngram_counts = {}
-        for ngram in ngrams:
-            ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
-
-        # Calculate repetition ratio
-        total_ngrams = len(ngrams)
-        repeated_ngrams = sum(1 for count in ngram_counts.values() if count > 1)
-
-        return repeated_ngrams / total_ngrams if total_ngrams > 0 else 0.0
-
-    def _analyze_word_distribution(self, text: str) -> dict:
-        """Analyze word frequency distribution for gibberish detection"""
-        words = re.findall(r"\b\w+\b", text.lower())
-
-        if len(words) < 5:
-            return {"gibberish_score": 1.0}  # Too short to analyze
-
-        word_counts = {}
-        for word in words:
-            word_counts[word] = word_counts.get(word, 0) + 1
-
-        # Calculate distribution metrics
-        unique_words = len(word_counts)
-        total_words = len(words)
-        uniqueness_ratio = unique_words / total_words
-
-        # Check for over-repetition of few words
-        top_word_count = max(word_counts.values()) if word_counts else 0
-        repetition_ratio = top_word_count / total_words
-
-        # Very low uniqueness or high repetition indicates gibberish
-        gibberish_score = 0.0
-        if uniqueness_ratio < 0.3:  # Less than 30% unique words
-            gibberish_score += 0.5
-        if repetition_ratio > 0.4:  # One word used more than 40% of the time
-            gibberish_score += 0.5
-
-        return {
-            "uniqueness_ratio": uniqueness_ratio,
-            "repetition_ratio": repetition_ratio,
-            "gibberish_score": gibberish_score,
-        }
-
-    def _analyze_word_lengths(self, text: str) -> dict:
-        """Analyze word length distribution"""
-        words = re.findall(r"\b\w+\b", text)
-
-        if not words:
-            return {"avg_length": 0, "coherence_score": 0.0}
-
-        lengths = [len(word) for word in words]
-        avg_length = sum(lengths) / len(lengths)
-
-        # Very short average word length indicates gibberish
-        coherence_score = min(1.0, avg_length / 5.0)  # Normalize to 5 chars
-
-        return {"avg_length": avg_length, "coherence_score": coherence_score}
-
-    def _analyze_stop_word_ratio(self, text: str) -> float:
-        """Analyze ratio of common stop words"""
-        # Dynamic stop word detection based on frequency
-        words = re.findall(r"\b\w+\b", text.lower())
-        word_counts = {}
-
-        for word in words:
-            word_counts[word] = word_counts.get(word, 0) + 1
-
-        # Most frequent words are likely stop words
-        sorted_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
-
-        # Top 10 most frequent words
-        top_words = [word for word, count in sorted_words[:10]]
-
-        # Calculate how evenly distributed the content is
-        # High concentration on few words = likely gibberish
-        if len(sorted_words) < 3:
-            return 1.0  # Too few words to analyze
-
-        # Gini coefficient for word distribution
-        total_count = sum(count for word, count in sorted_words)
-        cumulative = 0
-        gini = 0.0
-
-        for i, (word, count) in enumerate(sorted_words):
-            cumulative += count
-            gini += (i + 1) * count
-
-        gini = 1 - (2 * gini) / (len(sorted_words) * total_count)
-
-        return gini  # High gini = uneven distribution = gibberish
-
-    def _detect_template_patterns(self, text: str) -> float:
-        """Detect template/placeholder patterns dynamically"""
-        lines = text.split("\n")
-
-        # Look for similar line structures
-        line_patterns = []
-        for line in lines:
-            # Extract pattern: word types, punctuation, brackets
-            pattern = re.sub(r"\w+", "W", line)  # Replace words with W
-            pattern = re.sub(r"\d+", "N", pattern)  # Replace numbers with N
-            line_patterns.append(pattern.strip())
-
-        # Count pattern frequencies
-        pattern_counts = {}
-        for pattern in line_patterns:
-            if pattern:  # Skip empty patterns
-                pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
-
-        # Calculate template score
-        total_lines = len([p for p in line_patterns if p])
-        if total_lines == 0:
-            return 0.0
-
-        # High similarity in line structures indicates template content
-        max_pattern_count = max(pattern_counts.values()) if pattern_counts else 0
-        template_score = max_pattern_count / total_lines
-
-        return template_score
-
-    def _calculate_concept_score(
-        self, term: str, full_text: str, context: str
-    ) -> float:
-        """
-        Calculate a relevance score for a concept based on various factors
-        """
-        score = 0.6  # Base score
-
-        term_lower = term.lower()
-
-        # Boost score for capitalized words (likely proper nouns or important terms)
-        if term[0].isupper():
-            score += 0.2
-
-        # Boost score for longer words (likely more specific terms)
-        if len(term) > 6:
-            score += 0.1
-
-        # Boost score for words that appear multiple times in the text
-        word_count = full_text.lower().count(term_lower)
-        if word_count > 1:
-            score += min(0.2, word_count * 0.05)
-
-        # Boost score for technical terms (contains numbers, underscores, etc.)
-        if re.search(r"[0-9_]", term):
-            score += 0.1
-
-        # Boost score for terms that appear in headings or important positions
-        lines = full_text.split("\n")
-        for i, line in enumerate(lines):
-            if term_lower in line.lower():
-                # Boost for lines that look like headings
-                if line.strip().startswith(
-                    ("#", "##", "###", "-", "*", "1.", "2.", "3.")
-                ):
-                    score += 0.15
-                    break
-                # Boost for early lines (likely more important)
-                if i < 10:
-                    score += 0.05
-                    break
-
-        # Cap the score at 1.0
-        return min(1.0, score)
+        # Return top 100 concepts
+        return ranked_concepts[:100]
 
     def _infer_relationships(
         self, concepts: List[Any], text: str
@@ -1425,6 +1154,191 @@ class WorkspaceAnalysisService:
             return 0.0
 
         return dot_product / (norm1 * norm2)
+
+    async def analyze_flattened_file(
+        self, flattened_file_path: str, workspace_id: int
+    ) -> Dict[str, Any]:
+        """
+        Analyze a flattened workspace file containing all workspace content.
+
+        Args:
+            flattened_file_path: Path to the flattened file
+            workspace_id: ID of the workspace
+
+        Returns:
+            Analysis results with statistics
+        """
+        start_time = datetime.utcnow()
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Starting flattened file analysis for workspace {workspace_id}"
+        )
+        logging.info(f"[FLATTENED_ANALYSIS] Flattened file path: {flattened_file_path}")
+
+        flattened_path = Path(flattened_file_path)
+        if not flattened_path.exists():
+            logging.error(
+                f"[FLATTENED_ANALYSIS] Flattened file does not exist: {flattened_file_path}"
+            )
+            return {
+                "workspace_id": workspace_id,
+                "files_analyzed": 0,
+                "concepts_created": 0,
+                "relationships_created": 0,
+                "errors": [f"Flattened file not found: {flattened_file_path}"],
+                "duration_seconds": 0.0,
+                "message": "Flattened file not found",
+            }
+
+        # Read the flattened file content
+        content = self._read_file_content(flattened_path)
+        if not content:
+            logging.error(f"[FLATTENED_ANALYSIS] Flattened file is empty or unreadable")
+            return {
+                "workspace_id": workspace_id,
+                "files_analyzed": 0,
+                "concepts_created": 0,
+                "relationships_created": 0,
+                "errors": ["Flattened file is empty or unreadable"],
+                "duration_seconds": 0.0,
+                "message": "Flattened file is empty",
+            }
+
+        content_length = len(content)
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Read {content_length} characters from flattened file"
+        )
+
+        # Extract concepts from the entire flattened content (skip NLP to avoid model loading issues)
+        logging.info(f"[FLATTENED_ANALYSIS] Extracting concepts from flattened content")
+        concepts_data = self._extract_concepts_fallback_for_flattened(content)
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Extracted {len(concepts_data)} concepts from flattened file"
+        )
+
+        if not concepts_data:
+            logging.info(f"[FLATTENED_ANALYSIS] No concepts found in flattened file")
+            return {
+                "workspace_id": workspace_id,
+                "files_analyzed": 1,
+                "concepts_created": 0,
+                "relationships_created": 0,
+                "errors": [],
+                "duration_seconds": (datetime.utcnow() - start_time).total_seconds(),
+                "message": "No concepts found in flattened file",
+            }
+
+        # Create or get file record for the flattened file
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Creating/updating file record for flattened file"
+        )
+        file_id = await self._get_or_create_file_record(flattened_path, workspace_id)
+
+        # Store concepts
+        stored_concepts = []
+        logging.info(f"[FLATTENED_ANALYSIS] Storing {len(concepts_data)} concepts")
+
+        for i, concept_data in enumerate(concepts_data):
+            if (i + 1) % 10 == 0:  # Log progress every 10 concepts
+                logging.info(
+                    f"[FLATTENED_ANALYSIS] Processed {i + 1}/{len(concepts_data)} concepts"
+                )
+
+            try:
+                # Create concept
+                concept = await self.kg_service.create_concept(
+                    ConceptCreate(
+                        name=concept_data["name"],
+                        description=concept_data.get("description", ""),
+                    )
+                )
+                stored_concepts.append(concept)
+
+                # Create concept-file link with line pointers
+                await self.kg_service.create_concept_file_link(
+                    ConceptFileCreate(
+                        concept_id=concept.concept_id,
+                        file_id=file_id,
+                        workspace_id=workspace_id,
+                        snippet=concept_data.get("snippet", ""),
+                        relevance_score=concept_data.get("score", 0.5),
+                        start_line=concept_data.get("start_line"),
+                        end_line=concept_data.get("end_line"),
+                    )
+                )
+            except Exception as e:
+                logging.warning(
+                    f"[FLATTENED_ANALYSIS] Failed to store concept {concept_data['name']}: {e}"
+                )
+                continue
+
+        logging.info(f"[FLATTENED_ANALYSIS] Stored {len(stored_concepts)} concepts")
+
+        # Infer relationships between concepts
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Inferring relationships between {len(stored_concepts)} concepts"
+        )
+        relationships_data = self._infer_relationships(stored_concepts, content)
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Found {len(relationships_data)} potential relationships"
+        )
+
+        stored_relationships = []
+        for rel_data in relationships_data:
+            try:
+                relationship = await self.kg_service.create_relationship(
+                    RelationshipCreate(
+                        source_concept_id=rel_data["source_id"],
+                        target_concept_id=rel_data["target_id"],
+                        type=rel_data["type"],
+                        strength=rel_data.get("strength", 0.5),
+                    )
+                )
+                stored_relationships.append(relationship)
+            except Exception:
+                # Skip duplicate relationships
+                pass
+
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Created {len(stored_relationships)} relationships"
+        )
+
+        # Build embedding-based relationships if available (with timeout)
+        if self.embedding_service and len(stored_concepts) > 1:
+            logging.info("[FLATTENED_ANALYSIS] Building embedding-based relationships")
+            try:
+                # Add timeout to prevent hanging
+                import asyncio
+
+                await asyncio.wait_for(
+                    self._build_embedding_relationships(workspace_id),
+                    timeout=30.0,  # 30 second timeout
+                )
+                logging.info(
+                    "[FLATTENED_ANALYSIS] Embedding relationships built successfully"
+                )
+            except asyncio.TimeoutError:
+                logging.warning(
+                    "[FLATTENED_ANALYSIS] Embedding relationships timed out, skipping"
+                )
+            except Exception as e:
+                logging.error(
+                    f"[FLATTENED_ANALYSIS] Error building embedding relationships: {e}"
+                )
+
+        end_time = datetime.utcnow()
+        duration = (end_time - start_time).total_seconds()
+        logging.info(
+            f"[FLATTENED_ANALYSIS] Flattened file analysis completed in {duration:.2f} seconds"
+        )
+
+        return {
+            "workspace_id": workspace_id,
+            "files_analyzed": 1,
+            "concepts_created": len(stored_concepts),
+            "relationships_created": len(stored_relationships),
+            "errors": [],
+            "duration_seconds": duration,
+        }
 
     async def analyze_file_incremental(
         self, file_path: str, workspace_id: int
