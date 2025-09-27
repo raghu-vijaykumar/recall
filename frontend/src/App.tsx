@@ -6,6 +6,7 @@ import FileExplorer from '../components/file-explorer/FileExplorer';
 import Quiz from '../components/quiz/Quiz';
 import Progress from '../components/progress/Progress';
 import { KnowledgeGraph } from '../components/knowledge-graph/KnowledgeGraph';
+import DeveloperSettings from '../components/settings/DeveloperSettings';
 import { ThemeProvider, useTheme } from './core/ThemeContext';
 
 const AppContent: React.FC = () => {
@@ -37,6 +38,7 @@ const AppContent: React.FC = () => {
       window.menuEvents.on('menu-show-knowledge-graph', () => setCurrentTab('knowledge-graph'));
       window.menuEvents.on('menu-show-quiz', () => setCurrentTab('quiz'));
       window.menuEvents.on('menu-show-progress', () => setCurrentTab('progress'));
+      window.menuEvents.on('menu-show-settings', () => setCurrentTab('settings'));
       window.menuEvents.on('menu-toggle-theme', () => {
         // Toggle theme using our centralized theme system
         toggleTheme();
@@ -66,6 +68,7 @@ const AppContent: React.FC = () => {
         window.menuEvents.off('menu-show-knowledge-graph', () => setCurrentTab('knowledge-graph'));
         window.menuEvents.off('menu-show-quiz', () => setCurrentTab('quiz'));
         window.menuEvents.off('menu-show-progress', () => setCurrentTab('progress'));
+        window.menuEvents.off('menu-show-settings', () => setCurrentTab('settings'));
         window.menuEvents.off('menu-toggle-theme', () => {
           toggleTheme();
         });
@@ -93,6 +96,8 @@ const AppContent: React.FC = () => {
         return <Quiz currentWorkspaceId={currentWorkspaceId} />;
       case 'progress':
         return <Progress currentWorkspaceId={currentWorkspaceId} />;
+      case 'settings':
+        return <DeveloperSettings />;
       default:
         return <Workspaces
           showCreateModal={showCreateWorkspaceModal}

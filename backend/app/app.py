@@ -21,6 +21,8 @@ from app.routes.progress import router as progress_router
 from app.routes.search import router as search_router
 from app.routes.knowledge_graph import router as knowledge_graph_router
 from app.routes.quiz_improvements import router as quiz_improvements_router
+from app.routes.workspace_topics import router as workspace_topics_router
+from app.services.database import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Handle application startup and shutdown events."""
     logger.info("Starting up Recall API...")
+
+    # Initialize database service singleton on startup
+    logger.info("Initializing database service...")
+    db_service = DatabaseService()
+    logger.info("Database service initialized successfully")
+
     yield
     logger.info("Shutting down Recall API...")
     # Cancel all pending tasks to ensure clean shutdown
@@ -77,6 +85,7 @@ app.include_router(progress_router, prefix="/api/progress", tags=["progress"])
 app.include_router(search_router, prefix="/api/search", tags=["search"])
 app.include_router(knowledge_graph_router, tags=["knowledge-graph"])
 app.include_router(quiz_improvements_router, tags=["quiz-improvements"])
+app.include_router(workspace_topics_router, tags=["workspace-topics"])
 
 
 @app.get("/")

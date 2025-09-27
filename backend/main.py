@@ -35,13 +35,13 @@ if __name__ == "__main__":
     logger = logging.getLogger("backend")
     logger.info("Starting backend application...")
 
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8080))
     # Disable reload when running in a PyInstaller bundle
     is_frozen = getattr(sys, "frozen", False)
     uvicorn.run(
         "app.app:app",
         host="127.0.0.1",
         port=port,
-        reload=not is_frozen,
-        log_level="info",  # Uvicorn's log_level will still control its own messages
+        reload=False,
+        log_level="debug",  # Uvicorn's log_level will still control its own messages
     )

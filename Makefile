@@ -1,4 +1,5 @@
 .PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve
+.ONESHELL:
 
 # Default target
 help:
@@ -17,27 +18,59 @@ help:
 
 # Setup dependencies
 setup:
+	@echo off
+	setlocal enabledelayedexpansion
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set start=%%i
 	npm install
 	cd backend && python -m venv .venv
 	cd backend && .venv\Scripts\python.exe -m pip install -r requirements.txt
 	cd backend && .venv\Scripts\python.exe -m pip install mkdocs
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set end=%%i
+	set /a duration=!end! - !start!
+	set /a minutes=!duration! / 60
+	set /a seconds=!duration! % 60
+	echo setup took !minutes! minutes and !seconds! seconds
 
 # Build the application
 build: test kill
+	@echo off
+	setlocal enabledelayedexpansion
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set start=%%i
 	make build-frontend
 	make build-electron
 	make build-backend-pyinstaller
 	npx copyfiles -u 1 "frontend/components/**/*.html" dist/frontend
 	npx copyfiles -u 1 "backend/dist/recall-backend.exe" dist/backend
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set end=%%i
+	set /a duration=!end! - !start!
+	set /a minutes=!duration! / 60
+	set /a seconds=!duration! % 60
+	echo build took !minutes! minutes and !seconds! seconds
 
 # Run in development mode
 dev:
+	@echo off
+	setlocal enabledelayedexpansion
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set start=%%i
 	@taskkill /IM recall-backend.exe /F >nul 2>&1 || echo recall-backend.exe not running
 	npx concurrently "npm run dev:frontend" "make build-electron && npx electron-forge start"
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set end=%%i
+	set /a duration=!end! - !start!
+	set /a minutes=!duration! / 60
+	set /a seconds=!duration! % 60
+	echo dev took !minutes! minutes and !seconds! seconds
 
 # Create distributable package
 dist: clean build
+	@echo off
+	setlocal enabledelayedexpansion
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set start=%%i
 	npx electron-forge make
+	for /f %%i in ('powershell -command "Get-Date -UFormat %%s"') do set end=%%i
+	set /a duration=!end! - !start!
+	set /a minutes=!duration! / 60
+	set /a seconds=!duration! % 60
+	echo dist took !minutes! minutes and !seconds! seconds
 
 # Run tests only
 test:
@@ -83,6 +116,11 @@ start: build
 	@echo Starting Electron Forge...
 	npx electron-forge start
 
+# Start backend only
+start-backend:
+	@echo Starting backend server...
+	cd backend && .\.venv\Scripts\activate.bat && set FLASK_DEBUG=1 && set PYTHONPATH=%cd% && python main.py
+
 # Full clean, rebuild, and install
 install: dist
 	@echo Removing old app data...
@@ -94,15 +132,15 @@ install: dist
 
 kill:
 	@echo Killing processes...
-	@taskkill /IM recall.exe /F >nul 2>&1 || echo recall.exe not running
-	@taskkill /IM electron.exe /F >nul 2>&1 || echo electron.exe not running
-	@taskkill /IM recall-backend.exe /F >nul 2>&1 || echo recall-backend.exe not running
+	-@taskkill /IM recall.exe /F >nul 2>&1
+	-@taskkill /IM electron.exe /F >nul 2>&1
+	-@taskkill /IM recall-backend.exe /F >nul 2>&1
 	-@for %%p in (8000 8001 8002) do ( \
 		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do ( \
 			taskkill /PID %%a /F >nul 2>&1 \
-			@echo Killed process %%a on port %%p \
 		) \
 	)
+	@echo Process cleanup complete
 
 # Build wiki documentation site
 wiki-build:

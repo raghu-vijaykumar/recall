@@ -14,6 +14,15 @@ from .knowledge_graph import (
     ConceptCreate,
     RelationshipCreate,
     ConceptFileCreate,
+    TopicArea,
+    TopicAreaCreate,
+    TopicConceptLink,
+    TopicConceptLinkCreate,
+    LearningPath,
+    LearningPathCreate,
+    LearningRecommendation,
+    LearningRecommendationCreate,
+    WorkspaceTopicAnalysis,
 )
 from .progress import Progress, UserStats
 
@@ -35,6 +44,15 @@ __all__ = [
     "ConceptCreate",
     "RelationshipCreate",
     "ConceptFileCreate",
+    "TopicArea",
+    "TopicAreaCreate",
+    "TopicConceptLink",
+    "TopicConceptLinkCreate",
+    "LearningPath",
+    "LearningPathCreate",
+    "LearningRecommendation",
+    "LearningRecommendationCreate",
+    "WorkspaceTopicAnalysis",
     "Progress",
     "UserStats",
 ]

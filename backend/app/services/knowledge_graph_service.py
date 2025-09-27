@@ -47,6 +47,7 @@ class KnowledgeGraphService:
             },
         )
 
+        # Commit the concept creation
         await self.db.commit()
 
         # Return the created concept
@@ -114,6 +115,28 @@ class KnowledgeGraphService:
         self, relationship_data: RelationshipCreate
     ) -> Relationship:
         """Create a relationship between concepts"""
+        # Check if relationship already exists
+        existing_query = text(
+            """
+            SELECT relationship_id FROM relationships
+            WHERE (source_concept_id = :source AND target_concept_id = :target)
+               OR (source_concept_id = :target AND target_concept_id = :source)
+        """
+        )
+
+        result = await self.db.execute(
+            existing_query,
+            {
+                "source": relationship_data.source_concept_id,
+                "target": relationship_data.target_concept_id,
+            },
+        )
+
+        existing = result.fetchone()
+        if existing:
+            # Return existing relationship instead of creating duplicate
+            return await self._get_relationship_by_id(existing.relationship_id)
+
         # Generate UUID if not provided
         if (
             not hasattr(relationship_data, "relationship_id")
@@ -142,6 +165,7 @@ class KnowledgeGraphService:
             },
         )
 
+        # Commit the relationship creation
         await self.db.commit()
 
         return Relationship(
@@ -152,6 +176,25 @@ class KnowledgeGraphService:
             strength=relationship_data.strength,
             created_at=datetime.now(UTC),
         )
+
+    async def _get_relationship_by_id(self, relationship_id: str) -> Relationship:
+        """Get a relationship by ID"""
+        query = text(
+            "SELECT * FROM relationships WHERE relationship_id = :relationship_id"
+        )
+        result = await self.db.execute(query, {"relationship_id": relationship_id})
+        row = result.fetchone()
+
+        if row:
+            return Relationship(
+                relationship_id=row.relationship_id,
+                source_concept_id=row.source_concept_id,
+                target_concept_id=row.target_concept_id,
+                type=row.type,
+                strength=row.strength,
+                created_at=row.created_at,
+            )
+        return None
 
     async def get_relationships_for_concept(
         self, concept_id: str
@@ -192,9 +235,9 @@ class KnowledgeGraphService:
         query = text(
             """
             INSERT INTO concept_files (concept_file_id, concept_id, file_id, workspace_id,
-                                     snippet, relevance_score, last_accessed_at)
+                                     snippet, relevance_score, last_accessed_at, start_line, end_line)
             VALUES (:concept_file_id, :concept_id, :file_id, :workspace_id,
-                   :snippet, :relevance_score, :last_accessed_at)
+                   :snippet, :relevance_score, :last_accessed_at, :start_line, :end_line)
         """
         )
 
@@ -208,9 +251,12 @@ class KnowledgeGraphService:
                 "snippet": link_data.snippet,
                 "relevance_score": link_data.relevance_score,
                 "last_accessed_at": link_data.last_accessed_at,
+                "start_line": link_data.start_line,
+                "end_line": link_data.end_line,
             },
         )
 
+        # Commit the concept-file link creation
         await self.db.commit()
 
         return ConceptFile(
@@ -221,6 +267,8 @@ class KnowledgeGraphService:
             snippet=link_data.snippet,
             relevance_score=link_data.relevance_score,
             last_accessed_at=link_data.last_accessed_at,
+            start_line=link_data.start_line,
+            end_line=link_data.end_line,
         )
 
     async def get_files_for_concept(self, concept_id: str) -> List[ConceptFile]:
@@ -240,6 +288,8 @@ class KnowledgeGraphService:
                     snippet=row.snippet,
                     relevance_score=row.relevance_score,
                     last_accessed_at=row.last_accessed_at,
+                    start_line=row.start_line,
+                    end_line=row.end_line,
                 )
             )
 
@@ -262,6 +312,8 @@ class KnowledgeGraphService:
                     snippet=row.snippet,
                     relevance_score=row.relevance_score,
                     last_accessed_at=row.last_accessed_at,
+                    start_line=row.start_line,
+                    end_line=row.end_line,
                 )
             )
 
@@ -309,8 +361,26 @@ class KnowledgeGraphService:
         """
         )
 
-        result = await self.db.execute(query, {"workspace_id": workspace_id})
-        rows = result.fetchall()
+        # Retry logic for SQLite database locked errors
+        import asyncio
+
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                result = await self.db.execute(query, {"workspace_id": workspace_id})
+                rows = result.fetchall()
+                break
+            except Exception as e:
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    # Longer exponential backoff for database locks
+                    delay = 0.5 * (2**attempt)  # 0.5s, 1s, 2s, 4s, 8s...
+                    print(
+                        f"[KG] Database locked, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    raise e
 
         concepts = []
         for row in rows:

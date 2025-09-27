@@ -444,6 +444,14 @@ const createMenu = (win: any) => {
       label: 'Settings',
       submenu: [
         {
+          label: 'Developer Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            win.webContents.send('menu-show-settings');
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Toggle Theme',
           accelerator: 'CmdOrCtrl+T',
           click: () => {

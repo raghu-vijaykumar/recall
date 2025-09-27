@@ -14,6 +14,9 @@ from app.models.file import (
 )
 from app.services.file_service import FileService
 from app.services.database import DatabaseService
+from app.services.workspace_analysis_service import WorkspaceAnalysisService
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
 
 # Create router
 router = APIRouter()
@@ -21,7 +24,8 @@ router = APIRouter()
 
 # Dependency to get file service
 def get_file_service() -> FileService:
-    db_service = DatabaseService()  # Use environment variable DATABASE_PATH
+    # Use singleton instance
+    db_service = DatabaseService()
     return FileService(db_service)
 
 
@@ -105,13 +109,20 @@ async def update_file(
 
 @router.put("/{file_id}/content")
 async def update_file_content(
-    file_id: int, content: str, service: FileService = Depends(get_file_service)
+    file_id: int,
+    content: str,
+    service: FileService = Depends(get_file_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update file content"""
     try:
         success = service.save_file_content(file_id, content)
         if not success:
             raise HTTPException(status_code=404, detail="File not found")
+
+        # Trigger incremental embedding update
+        await _trigger_incremental_analysis(file_id, db)
+
         return {"message": "File content updated successfully"}
     except HTTPException:
         raise
@@ -122,12 +133,25 @@ async def update_file_content(
 
 
 @router.delete("/{file_id}")
-async def delete_file(file_id: int, service: FileService = Depends(get_file_service)):
+async def delete_file(
+    file_id: int,
+    service: FileService = Depends(get_file_service),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a file"""
     try:
+        # Get file info before deletion for incremental analysis
+        file_info = service.get_file(file_id)
         success = service.delete_file(file_id)
         if not success:
             raise HTTPException(status_code=404, detail="File not found")
+
+        # Trigger incremental analysis cleanup
+        if file_info:
+            await _trigger_file_deletion_cleanup(
+                file_info.path, file_info.workspace_id, db
+            )
+
         return {"message": "File deleted successfully"}
     except HTTPException:
         raise
@@ -194,3 +218,58 @@ async def scan_folder(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to scan folder: {str(e)}")
+
+
+# Helper functions for incremental analysis
+async def _trigger_incremental_analysis(file_id: int, db: AsyncSession):
+    """Trigger incremental embedding analysis for a modified file"""
+    try:
+        # Get file information
+        from sqlalchemy import text
+
+        query = text(
+            """
+            SELECT f.path, f.workspace_id, w.path as workspace_path
+            FROM files f
+            JOIN workspaces w ON f.workspace_id = w.id
+            WHERE f.id = :file_id
+        """
+        )
+
+        result = await db.execute(query, {"file_id": file_id})
+        file_record = result.fetchone()
+
+        if file_record:
+            # Initialize analysis service with embeddings
+            embedding_service = EmbeddingService()
+            analysis_service = WorkspaceAnalysisService(
+                db, embedding_service=embedding_service
+            )
+
+            # Run incremental analysis for this specific file
+            await analysis_service.analyze_file_incremental(
+                file_record.path, file_record.workspace_id
+            )
+
+    except Exception as e:
+        # Log error but don't fail the file operation
+        print(f"Incremental analysis failed for file {file_id}: {str(e)}")
+
+
+async def _trigger_file_deletion_cleanup(
+    file_path: str, workspace_id: int, db: AsyncSession
+):
+    """Clean up embeddings and relationships when a file is deleted"""
+    try:
+        # Initialize analysis service
+        embedding_service = EmbeddingService()
+        analysis_service = WorkspaceAnalysisService(
+            db, embedding_service=embedding_service
+        )
+
+        # Remove concepts associated with this file
+        await analysis_service._remove_file_concepts(file_path, workspace_id)
+
+    except Exception as e:
+        # Log error but don't fail the file deletion
+        print(f"File deletion cleanup failed for {file_path}: {str(e)}")

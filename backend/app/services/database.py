@@ -16,7 +16,18 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
+    _instance = None
+
+    def __new__(cls, db_path: str = None):
+        if cls._instance is None:
+            cls._instance = super(DatabaseService, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, db_path: str = None):
+        if self._initialized:
+            return
+
         # Use environment variable if provided, otherwise default to user data
         if db_path is None:
             db_path = os.getenv(
@@ -26,6 +37,7 @@ class DatabaseService:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        self._initialized = True
 
     def _init_db(self):
         """Initialize database with migrations"""
