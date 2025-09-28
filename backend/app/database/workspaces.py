@@ -52,7 +52,12 @@ class WorkspaceDatabase:
         """,
             (workspace_id,),
         )
-        return result[0] if result else {"total_questions": 0, "completed_questions": 0}
+        if result:
+            stats = result[0]
+            stats["completed_questions"] = stats["completed_questions"] or 0
+            return stats
+        else:
+            return {"total_questions": 0, "completed_questions": 0}
 
     def get_last_studied(self, workspace_id: int) -> Optional[datetime]:
         """Get last studied date for workspace"""
@@ -74,7 +79,7 @@ class WorkspaceDatabase:
             """
             SELECT
                 COUNT(*) as total_files,
-                SUM(size) as total_size
+                COALESCE(SUM(size), 0) as total_size
             FROM files
             WHERE workspace_id = ?
         """,
@@ -88,8 +93,8 @@ class WorkspaceDatabase:
             """
             SELECT
                 COUNT(*) as total_questions,
-                AVG(CASE WHEN times_asked > 0 THEN times_correct * 1.0 / times_asked ELSE 0 END) as avg_accuracy,
-                SUM(times_asked) as total_attempts
+                COALESCE(AVG(CASE WHEN times_asked > 0 THEN times_correct * 1.0 / times_asked ELSE 0 END), 0) as avg_accuracy,
+                COALESCE(SUM(times_asked), 0) as total_attempts
             FROM questions q
             JOIN files f ON q.file_id = f.id
             WHERE f.workspace_id = ?
@@ -108,8 +113,8 @@ class WorkspaceDatabase:
             """
             SELECT
                 COUNT(*) as total_sessions,
-                AVG(correct_answers * 1.0 / total_questions) as avg_score,
-                SUM(total_time) as total_time
+                COALESCE(AVG(correct_answers * 1.0 / total_questions), 0) as avg_score,
+                COALESCE(SUM(total_time), 0) as total_time
             FROM quiz_sessions
             WHERE workspace_id = ? AND status = 'completed'
         """,
@@ -129,7 +134,7 @@ class WorkspaceDatabase:
                 COUNT(*) as study_sessions,
                 MAX(timestamp) as last_study
             FROM progress
-            WHERE workspace_id = ? AND action_type IN ('quiz_started', 'quiz_completed')
+            WHERE workspace_id = ? AND action_type = 'quiz_started'
         """,
             (workspace_id,),
         )
@@ -139,10 +144,10 @@ class WorkspaceDatabase:
         """Get recent quiz sessions for streak calculation"""
         return self.db.execute_query(
             """
-            SELECT DATE(timestamp) as date
+            SELECT DISTINCT DATE(timestamp) as date
             FROM progress
             WHERE workspace_id = ? AND action_type = 'quiz_completed'
-            ORDER BY timestamp DESC
+            ORDER BY date DESC
             LIMIT 30
         """,
             (workspace_id,),

@@ -50,3 +50,10 @@ This document provides instructions for setting up, building, and packaging the 
 ## Notes
 - Update this README with any additional environment variables, configuration, or special instructions as your backend evolves.
 - For troubleshooting, consult the error messages or open an issue in the repository.
+
+
+DELETE FROM concepts;
+DELETE FROM concept_files;
+DELETE FROM relationships;
+DELETE FROM files;
+COMMIT;

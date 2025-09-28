@@ -26,7 +26,7 @@ class AnswerDatabase:
     def get_answers_by_question(self, question_id: int) -> List[Dict[str, Any]]:
         """Get all answers for a question"""
         return self.db.execute_query(
-            "SELECT * FROM answers WHERE question_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM answers WHERE question_id = ? ORDER BY id DESC",
             (question_id,),
         )
 
@@ -63,21 +63,16 @@ class AnswerDatabase:
         """,
             (question_id,),
         )
-        return (
-            result[0]
-            if result
-            else {"total_answers": 0, "avg_time": 0, "correct_answers": 0}
-        )
+        if result:
+            stats = result[0]
+            stats["avg_time"] = stats["avg_time"] or 0
+            stats["correct_answers"] = stats["correct_answers"] or 0
+            return stats
+        else:
+            return {"total_answers": 0, "avg_time": 0, "correct_answers": 0}
 
-    def get_recent_answers(
-        self, user_id: Optional[str] = None, limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    def get_recent_answers(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent answers"""
-        if user_id:
-            return self.db.execute_query(
-                "SELECT * FROM answers WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
-                (user_id, limit),
-            )
         return self.db.execute_query(
             "SELECT * FROM answers ORDER BY created_at DESC LIMIT ?",
             (limit,),

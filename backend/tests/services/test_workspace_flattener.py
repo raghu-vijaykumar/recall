@@ -119,14 +119,18 @@ class TestWorkspaceFlattener:
 
         result_path = flattener.flatten_workspace()
 
-        # Check that a file was created in the expected location
-        expected_prefix = str(Path("userdata/workspace/flattened_workspace1_"))
+        # Check that a file was created in the expected location (user's home .recall directory)
+        home_dir = Path.home()
+        expected_prefix = str(
+            home_dir / ".recall" / "workspace" / "flattened_workspace1_"
+        )
         assert result_path.startswith(expected_prefix)
         assert result_path.endswith(".txt")
         assert os.path.exists(result_path)
 
         # Verify the directory was created
-        assert os.path.exists("userdata/workspace")
+        recall_workspace_dir = home_dir / ".recall" / "workspace"
+        assert recall_workspace_dir.exists()
 
         # Check file content
         with open(result_path, "r", encoding="utf-8") as f:

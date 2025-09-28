@@ -29,13 +29,11 @@ class SessionQuestionDatabase:
         self, session_id: int, question_id: int, answer_data: Dict[str, Any]
     ) -> int:
         """Update answer for a session question"""
-        return self.db.update(
-            "session_questions",
-            None,  # No primary key update
-            {**answer_data},
-            where_clause="session_id = ? AND question_id = ?",
-            where_params=(session_id, question_id),
-        )
+        set_clause = ", ".join([f"{k} = ?" for k in answer_data.keys()])
+        values = tuple(answer_data.values()) + (session_id, question_id)
+
+        query = f"UPDATE session_questions SET {set_clause} WHERE session_id = ? AND question_id = ?"
+        return self.db.execute_update(query, values)
 
     def get_session_results(self, session_id: int) -> List[Dict[str, Any]]:
         """Get results for all questions in a session"""

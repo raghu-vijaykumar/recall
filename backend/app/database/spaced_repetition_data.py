@@ -47,14 +47,14 @@ class SpacedRepetitionDataDatabase:
         """Get questions due for spaced repetition review"""
         return self.db.execute_query(
             "SELECT * FROM spaced_repetition_data WHERE next_review <= ? ORDER BY next_review ASC LIMIT ?",
-            (datetime.now(), limit),
+            (datetime.now().isoformat(), limit),
         )
 
     def get_overdue_questions(self) -> List[Dict[str, Any]]:
         """Get questions that are overdue for review"""
         return self.db.execute_query(
             "SELECT * FROM spaced_repetition_data WHERE next_review < ? ORDER BY next_review ASC",
-            (datetime.now(),),
+            (datetime.now().isoformat(),),
         )
 
     def delete_spaced_repetition_data(self, question_id: int) -> int:

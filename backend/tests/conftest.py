@@ -12,15 +12,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 # Import routes
-from backend.app.routes.workspaces import router as workspaces_router
-from backend.app.routes.files import router as files_router
-from backend.app.routes.quiz import router as quiz_router
-from backend.app.routes.progress import router as progress_router
-from backend.app.routes.search import router as search_router
-from backend.app.routes.knowledge_graph import router as knowledge_graph_router
+from app.routes.workspaces import router as workspaces_router
+from app.routes.files import router as files_router
+from app.routes.quiz import router as quiz_router
+from app.routes.progress import router as progress_router
+from app.routes.search import router as search_router
+from app.routes.knowledge_graph import router as knowledge_graph_router
 
 # Import migration service for test database setup
-from backend.app.services.migration_service import MigrationService
+from app.services.migration_service import MigrationService
 
 
 @pytest.fixture(scope="function", autouse=True)

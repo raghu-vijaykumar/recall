@@ -3,7 +3,7 @@ Database operations for progress table
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from app.services.database import DatabaseService
@@ -42,7 +42,7 @@ class ProgressDatabase:
         result = self.db.execute_query(
             """
             SELECT COUNT(*) as count FROM progress
-            WHERE workspace_id = ? AND action_type IN ('quiz_started', 'quiz_completed')
+            WHERE workspace_id = ? AND action_type = 'quiz_started'
         """,
             (workspace_id,),
         )
@@ -65,7 +65,7 @@ class ProgressDatabase:
         self, workspace_id: int, days: int = 30
     ) -> List[Dict[str, Any]]:
         """Get recent progress events"""
-        cutoff_date = datetime.now() - datetime.timedelta(days=days)
+        cutoff_date = datetime.now() - timedelta(days=days)
         return self.db.execute_query(
             "SELECT * FROM progress WHERE workspace_id = ? AND timestamp >= ? ORDER BY timestamp DESC",
             (workspace_id, cutoff_date.isoformat()),

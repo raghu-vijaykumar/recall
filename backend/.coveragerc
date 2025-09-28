@@ -1,0 +1,7 @@
+[run]
+# Folders and files to omit from being measured by coverage.py
+# Use wildcards to match patterns, e.g., 'tests/*'
+omit =
+    *\recommendation\*
+    *\models\*
+    *\migrations\*

@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class AchievementDatabase:
-    def __init__(self, db_service: DatabaseService):
-        self.db = db_service
+    def __init__(self, db_service: DatabaseService = None):
+        self.db = db_service or DatabaseService()
 
     def get_all_achievements(self) -> List[Dict[str, Any]]:
         """Get all achievements"""

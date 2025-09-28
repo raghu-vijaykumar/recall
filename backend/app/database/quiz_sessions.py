@@ -26,7 +26,7 @@ class QuizSessionDatabase:
     def get_sessions_by_workspace(self, workspace_id: int) -> List[Dict[str, Any]]:
         """Get all quiz sessions for a workspace"""
         return self.db.execute_query(
-            "SELECT * FROM quiz_sessions WHERE workspace_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM quiz_sessions WHERE workspace_id = ? ORDER BY id DESC",
             (workspace_id,),
         )
 
@@ -71,17 +71,19 @@ class QuizSessionDatabase:
         """,
             (workspace_id,),
         )
-        return (
-            result[0]
-            if result
-            else {"total_sessions": 0, "avg_score": 0, "total_time": 0}
-        )
+        if result:
+            stats = result[0]
+            stats["avg_score"] = stats["avg_score"] or 0
+            stats["total_time"] = stats["total_time"] or 0
+            return stats
+        else:
+            return {"total_sessions": 0, "avg_score": 0, "total_time": 0}
 
     def get_recent_sessions(
         self, workspace_id: int, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """Get recent quiz sessions for workspace"""
         return self.db.execute_query(
-            "SELECT * FROM quiz_sessions WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM quiz_sessions WHERE workspace_id = ? ORDER BY id DESC LIMIT ?",
             (workspace_id, limit),
         )

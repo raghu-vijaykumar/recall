@@ -3,7 +3,7 @@ Database operations for questions table
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from app.services.database import DatabaseService
@@ -79,7 +79,7 @@ class QuestionDatabase:
             ORDER BY srd.next_review ASC
             LIMIT ?
         """,
-            (datetime.now(), limit),
+            (datetime.now().isoformat(), limit),
         )
 
     def get_question_performance_stats(self, workspace_id: int) -> List[Dict[str, Any]]:
