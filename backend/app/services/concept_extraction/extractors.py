@@ -38,11 +38,13 @@ class EntityRecognitionExtractor(ConceptExtractor):
 
         concepts = self._extract_with_spacy(content)
 
-        # Filter out stop words and gibberish
+        # Filter out stop words, non-concept words and gibberish
         filtered_concepts = []
         for concept in concepts:
-            if not self._is_stop_word(concept["name"]) and not self._is_gibberish_term(
-                concept["name"]
+            if (
+                not self._is_stop_word(concept["name"])
+                and not self._is_gibberish_term(concept["name"])
+                and not self._is_non_concept_word(concept["name"])
             ):
                 filtered_concepts.append(concept)
 

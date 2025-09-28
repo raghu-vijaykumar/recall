@@ -8,6 +8,7 @@ from typing import List, Optional
 import logging
 
 from ..database import get_db
+from ..database.workspace_topics import WorkspaceTopicsDatabase
 from ..models import (
     TopicArea,
     LearningPath,
@@ -52,8 +53,22 @@ async def analyze_workspace_topics(
         await embedding_service.initialize()  # Initialize the embedding service
 
         logging.info("Initializing WorkspaceTopicDiscoveryService")
+        from ..services.concept_extraction.extractors import EntityRecognitionExtractor
+        from ..services.concept_extraction.rankers import TFIDFRanking
+
+        extractor = EntityRecognitionExtractor(use_spacy=True)
+        ranker = TFIDFRanking()
+        from ..services import WorkspaceAnalysisService
+
+        workspace_analysis_service = WorkspaceAnalysisService(
+            db,
+            extractor,
+            ranker,
+            kg_service=kg_service,
+        )
+
         topic_service = WorkspaceTopicDiscoveryService(
-            db, kg_service, embedding_service
+            db, kg_service, embedding_service, workspace_analysis_service
         )
 
         # Perform analysis
@@ -129,37 +144,9 @@ async def get_workspace_topic_areas(
         List of topic areas
     """
     try:
-        from sqlalchemy import text
-
-        query = text(
-            """
-            SELECT * FROM topic_areas
-            WHERE workspace_id = :workspace_id
-            ORDER BY coverage_score DESC, explored_percentage DESC
-            """
-        )
-
-        result = await db.execute(query, {"workspace_id": workspace_id})
-        rows = result.fetchall()
-
-        topic_areas = []
-        for row in rows:
-            topic_areas.append(
-                TopicArea(
-                    topic_area_id=row.topic_area_id,
-                    workspace_id=row.workspace_id,
-                    name=row.name,
-                    description=row.description,
-                    coverage_score=row.coverage_score,
-                    concept_count=row.concept_count,
-                    file_count=row.file_count,
-                    explored_percentage=row.explored_percentage,
-                    created_at=row.created_at,
-                    updated_at=row.updated_at,
-                )
-            )
-
-        return topic_areas
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        return await db_workspace_topics.get_workspace_topic_areas(workspace_id)
 
     except Exception as e:
         logging.error(f"Error retrieving topic areas for workspace {workspace_id}: {e}")
@@ -183,40 +170,9 @@ async def get_workspace_learning_paths(
         List of learning paths
     """
     try:
-        import json
-        from sqlalchemy import text
-
-        query = text(
-            """
-            SELECT * FROM learning_paths
-            WHERE workspace_id = :workspace_id
-            ORDER BY estimated_hours ASC
-            """
-        )
-
-        result = await db.execute(query, {"workspace_id": workspace_id})
-        rows = result.fetchall()
-
-        learning_paths = []
-        for row in rows:
-            learning_paths.append(
-                LearningPath(
-                    learning_path_id=row.learning_path_id,
-                    workspace_id=row.workspace_id,
-                    name=row.name,
-                    description=row.description,
-                    topic_areas=json.loads(row.topic_areas) if row.topic_areas else [],
-                    estimated_hours=row.estimated_hours,
-                    difficulty_level=row.difficulty_level,
-                    prerequisites=(
-                        json.loads(row.prerequisites) if row.prerequisites else None
-                    ),
-                    created_at=row.created_at,
-                    updated_at=row.updated_at,
-                )
-            )
-
-        return learning_paths
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        return await db_workspace_topics.get_workspace_learning_paths(workspace_id)
 
     except Exception as e:
         logging.error(
@@ -244,38 +200,11 @@ async def get_workspace_recommendations(
         List of learning recommendations ordered by priority
     """
     try:
-        from sqlalchemy import text
-
-        query = text(
-            """
-            SELECT * FROM learning_recommendations
-            WHERE workspace_id = :workspace_id
-            ORDER BY priority_score DESC
-            LIMIT :limit
-            """
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        return await db_workspace_topics.get_workspace_recommendations(
+            workspace_id, limit
         )
-
-        result = await db.execute(query, {"workspace_id": workspace_id, "limit": limit})
-        rows = result.fetchall()
-
-        recommendations = []
-        for row in rows:
-            recommendations.append(
-                LearningRecommendation(
-                    recommendation_id=row.recommendation_id,
-                    workspace_id=row.workspace_id,
-                    user_id=row.user_id,
-                    recommendation_type=row.recommendation_type,
-                    topic_area_id=row.topic_area_id,
-                    concept_id=row.concept_id,
-                    priority_score=row.priority_score,
-                    reason=row.reason,
-                    suggested_action=row.suggested_action,
-                    created_at=row.created_at,
-                )
-            )
-
-        return recommendations
 
     except Exception as e:
         logging.error(
@@ -301,36 +230,9 @@ async def get_topic_area_concepts(
         List of concepts with their relevance scores
     """
     try:
-        from sqlalchemy import text
-
-        query = text(
-            """
-            SELECT c.*, tcl.relevance_score, tcl.explored
-            FROM concepts c
-            JOIN topic_concept_links tcl ON c.concept_id = tcl.concept_id
-            WHERE tcl.topic_area_id = :topic_area_id
-            ORDER BY tcl.relevance_score DESC
-            """
-        )
-
-        result = await db.execute(query, {"topic_area_id": topic_area_id})
-        rows = result.fetchall()
-
-        concepts = []
-        for row in rows:
-            concepts.append(
-                {
-                    "concept_id": row.concept_id,
-                    "name": row.name,
-                    "description": row.description,
-                    "relevance_score": row.relevance_score,
-                    "explored": row.explored,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
-            )
-
-        return concepts
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        return await db_workspace_topics.get_topic_area_concepts(topic_area_id)
 
     except Exception as e:
         logging.error(f"Error retrieving concepts for topic area {topic_area_id}: {e}")
@@ -354,40 +256,9 @@ async def get_topic_area_files(
         List of files with concept coverage information
     """
     try:
-        from sqlalchemy import text
-
-        query = text(
-            """
-            SELECT DISTINCT f.*, COUNT(cf.concept_id) as concept_count
-            FROM files f
-            JOIN concept_files cf ON f.id = cf.file_id
-            JOIN topic_concept_links tcl ON cf.concept_id = tcl.concept_id
-            WHERE tcl.topic_area_id = :topic_area_id
-            GROUP BY f.id
-            ORDER BY concept_count DESC
-            """
-        )
-
-        result = await db.execute(query, {"topic_area_id": topic_area_id})
-        rows = result.fetchall()
-
-        files = []
-        for row in rows:
-            files.append(
-                {
-                    "id": row.id,
-                    "workspace_id": row.workspace_id,
-                    "name": row.name,
-                    "path": row.path,
-                    "file_type": row.file_type,
-                    "size": row.size,
-                    "concept_count": row.concept_count,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
-            )
-
-        return files
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        return await db_workspace_topics.get_topic_area_files(topic_area_id)
 
     except Exception as e:
         logging.error(f"Error retrieving files for topic area {topic_area_id}: {e}")

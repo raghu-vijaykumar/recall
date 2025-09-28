@@ -57,7 +57,6 @@ class ConceptFileBase(BaseModel):
     concept_id: str = Field(..., description="Concept ID")
     file_id: int = Field(..., description="File ID")
     workspace_id: int = Field(..., description="Workspace ID")
-    snippet: Optional[str] = Field(None, description="Relevant text snippet")
     relevance_score: Optional[float] = Field(None, description="Relevance score")
     last_accessed_at: Optional[datetime] = Field(
         None, description="Last accessed timestamp"

@@ -235,9 +235,9 @@ class KnowledgeGraphService:
         query = text(
             """
             INSERT INTO concept_files (concept_file_id, concept_id, file_id, workspace_id,
-                                     snippet, relevance_score, last_accessed_at, start_line, end_line)
+                                     relevance_score, last_accessed_at, start_line, end_line)
             VALUES (:concept_file_id, :concept_id, :file_id, :workspace_id,
-                   :snippet, :relevance_score, :last_accessed_at, :start_line, :end_line)
+                   :relevance_score, :last_accessed_at, :start_line, :end_line)
         """
         )
 
@@ -248,7 +248,6 @@ class KnowledgeGraphService:
                 "concept_id": link_data.concept_id,
                 "file_id": link_data.file_id,
                 "workspace_id": link_data.workspace_id,
-                "snippet": link_data.snippet,
                 "relevance_score": link_data.relevance_score,
                 "last_accessed_at": link_data.last_accessed_at,
                 "start_line": link_data.start_line,
@@ -264,7 +263,6 @@ class KnowledgeGraphService:
             concept_id=link_data.concept_id,
             file_id=link_data.file_id,
             workspace_id=link_data.workspace_id,
-            snippet=link_data.snippet,
             relevance_score=link_data.relevance_score,
             last_accessed_at=link_data.last_accessed_at,
             start_line=link_data.start_line,
@@ -285,7 +283,6 @@ class KnowledgeGraphService:
                     concept_id=row.concept_id,
                     file_id=row.file_id,
                     workspace_id=row.workspace_id,
-                    snippet=row.snippet,
                     relevance_score=row.relevance_score,
                     last_accessed_at=row.last_accessed_at,
                     start_line=row.start_line,
@@ -309,7 +306,6 @@ class KnowledgeGraphService:
                     concept_id=row.concept_id,
                     file_id=row.file_id,
                     workspace_id=row.workspace_id,
-                    snippet=row.snippet,
                     relevance_score=row.relevance_score,
                     last_accessed_at=row.last_accessed_at,
                     start_line=row.start_line,

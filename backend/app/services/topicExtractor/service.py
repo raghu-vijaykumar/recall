@@ -2,7 +2,7 @@
 Topic Extraction Service for discovering topic areas in workspaces.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import logging
 
@@ -11,7 +11,8 @@ from sqlalchemy import text
 
 from .base import BaseTopicExtractor
 from .embedding_cluster_extractor import EmbeddingClusterExtractor
-from ...models import TopicArea
+from .bertopic_extractor import BERTopicExtractor
+from ...models import TopicArea, TopicConceptLink
 from ..embedding_service import EmbeddingService
 
 
@@ -26,16 +27,48 @@ class TopicExtractionService:
         db: AsyncSession,
         embedding_service: Optional[EmbeddingService] = None,
         topic_extractor: Optional[BaseTopicExtractor] = None,
+        extractor_type: str = "embedding_cluster",  # "bertopic", "embedding_cluster", "hybrid"
+        extractor_config: Optional[Dict[str, Any]] = None,
     ):
         self.db = db
         self.embedding_service = embedding_service or EmbeddingService.get_instance()
-        self.topic_extractor = topic_extractor or EmbeddingClusterExtractor(
-            embedding_service=self.embedding_service
-        )
+        self.extractor_type = extractor_type
+        self.extractor_config = extractor_config or {}
+
+        # Create topic extractor based on type
+        if topic_extractor:
+            self.topic_extractor = topic_extractor
+        else:
+            self.topic_extractor = self._create_extractor()
+
+    def _create_extractor(self) -> BaseTopicExtractor:
+        """Create topic extractor based on configured type"""
+        logging.info(f"Creating {self.extractor_type} topic extractor")
+
+        if self.extractor_type == "bertopic":
+            return BERTopicExtractor(
+                embedding_service=self.embedding_service, **self.extractor_config
+            )
+        elif self.extractor_type == "embedding_cluster":
+            return EmbeddingClusterExtractor(
+                embedding_service=self.embedding_service, **self.extractor_config
+            )
+        elif self.extractor_type == "hybrid":
+            # For hybrid, we'll use BERTopic as primary with embedding_cluster as fallback
+            return BERTopicExtractor(
+                embedding_service=self.embedding_service, **self.extractor_config
+            )
+        else:
+            logging.warning(
+                f"Unknown extractor type: {self.extractor_type}, falling back to embedding_cluster"
+            )
+            return EmbeddingClusterExtractor(
+                embedding_service=self.embedding_service, **self.extractor_config
+            )
 
     async def extract_topics(
         self, workspace_id: int, concepts_data: List[Dict[str, Any]]
-    ) -> List[TopicArea]:
+    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
         """
         Extract topic areas from concept data using the configured extractor.
 
@@ -44,14 +77,14 @@ class TopicExtractionService:
             concepts_data: List of concept dictionaries
 
         Returns:
-            List of extracted TopicArea objects
+            Tuple of (topic_areas, concept_links)
         """
         logging.info(
             f"Extracting topics for workspace {workspace_id} with {len(concepts_data)} concepts"
         )
 
         # Use the configured topic extractor
-        topic_areas = await self.topic_extractor.extract_topics(
+        topic_areas, concept_links = await self.topic_extractor.extract_topics(
             workspace_id, concepts_data
         )
 
@@ -62,9 +95,9 @@ class TopicExtractionService:
             )
 
         logging.info(
-            f"Extracted {len(topic_areas)} topic areas for workspace {workspace_id}"
+            f"Extracted {len(topic_areas)} topic areas and {len(concept_links)} concept links for workspace {workspace_id}"
         )
-        return topic_areas
+        return topic_areas, concept_links
 
     async def _get_topic_file_count(self, workspace_id: int, topic_area_id: str) -> int:
         """
@@ -162,3 +195,117 @@ class TopicExtractionService:
             return row.quiz_count >= 3 and (row.avg_score or 0) > 0.7
 
         return False
+
+    async def _get_workspace_concept_count(self, workspace_id: int) -> int:
+        """Get total number of concepts in workspace"""
+        query = text(
+            """
+            SELECT COUNT(*) FROM concepts c
+            JOIN concept_files cf ON c.concept_id = cf.concept_id
+            WHERE cf.workspace_id = :workspace_id
+            """
+        )
+        result = await self.db.execute(query, {"workspace_id": workspace_id})
+        return result.scalar() or 0
+
+    async def _get_workspace_file_count(self, workspace_id: int) -> int:
+        """Get total number of files in workspace"""
+        query = text("SELECT COUNT(*) FROM files WHERE workspace_id = :workspace_id")
+        result = await self.db.execute(query, {"workspace_id": workspace_id})
+        return result.scalar() or 0
+
+    async def calculate_workspace_topic_metrics(
+        self, workspace_id: int, topic_areas: List[TopicArea]
+    ) -> None:
+        """
+        Calculate comprehensive metrics for topic areas including coverage and exploration.
+        This consolidates the metric calculation logic from workspace_topic_discovery_service.
+        """
+        logging.info(
+            f"Calculating comprehensive metrics for {len(topic_areas)} topic areas"
+        )
+
+        for topic_area in topic_areas:
+            # Get concepts for this topic area
+            topic_concepts = await self._get_topic_concepts(
+                workspace_id, topic_area.topic_area_id
+            )
+            topic_area.concept_count = len(topic_concepts)
+
+            # Get file count for this topic area
+            topic_area.file_count = await self._get_topic_file_count_by_concepts(
+                workspace_id, topic_concepts
+            )
+
+            # Calculate coverage score (based on concept count and file coverage)
+            # Normalize by total workspace concepts and files
+            total_workspace_concepts = await self._get_workspace_concept_count(
+                workspace_id
+            )
+            total_workspace_files = await self._get_workspace_file_count(workspace_id)
+
+            concept_coverage = (
+                topic_area.concept_count / total_workspace_concepts
+                if total_workspace_concepts > 0
+                else 0
+            )
+            file_coverage = (
+                topic_area.file_count / total_workspace_files
+                if total_workspace_files > 0
+                else 0
+            )
+
+            # Weighted coverage score (using same weights as workspace_topic_discovery_service)
+            coverage_weight = 0.6  # Weight for coverage in scoring
+            explored_weight = 0.4  # Weight for exploration in scoring
+            topic_area.coverage_score = (
+                coverage_weight * concept_coverage
+                + (1 - coverage_weight) * file_coverage
+            )
+
+            # Calculate exploration percentage
+            explored_concepts = 0
+            for concept in topic_concepts:
+                if await self._is_concept_explored(workspace_id, concept["id"]):
+                    explored_concepts += 1
+
+            topic_area.explored_percentage = (
+                explored_concepts / topic_area.concept_count
+                if topic_area.concept_count > 0
+                else 0
+            )
+
+            logging.info(
+                f"Topic area '{topic_area.name}': {topic_area.concept_count} concepts, "
+                f"{topic_area.file_count} files, coverage={topic_area.coverage_score:.3f}, "
+                f"explored={topic_area.explored_percentage:.1%}"
+            )
+
+    async def _get_topic_file_count_by_concepts(
+        self, workspace_id: int, concepts: List[Dict[str, Any]]
+    ) -> int:
+        """Get number of unique files covering the given concepts"""
+        if not concepts:
+            return 0
+
+        concept_ids = [c["id"] for c in concepts]
+
+        # Use proper parameter binding to avoid SQL injection and formatting issues
+        placeholders = ",".join(f":concept_{i}" for i in range(len(concept_ids)))
+
+        query_str = f"""
+            SELECT COUNT(DISTINCT cf.file_id)
+            FROM concept_files cf
+            WHERE cf.concept_id IN ({placeholders})
+            AND cf.workspace_id = :workspace_id
+        """
+
+        # Create parameter dictionary
+        params = {
+            f"concept_{i}": concept_id for i, concept_id in enumerate(concept_ids)
+        }
+        params["workspace_id"] = workspace_id
+
+        query = text(query_str)
+        result = await self.db.execute(query, params)
+        return result.scalar() or 0

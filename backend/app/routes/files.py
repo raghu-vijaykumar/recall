@@ -242,9 +242,7 @@ async def _trigger_incremental_analysis(file_id: int, db: AsyncSession):
         if file_record:
             # Initialize analysis service with embeddings
             embedding_service = EmbeddingService()
-            analysis_service = WorkspaceAnalysisService(
-                db, embedding_service=embedding_service
-            )
+            analysis_service = WorkspaceAnalysisService(db)
 
             # Run incremental analysis for this specific file
             await analysis_service.analyze_file_incremental(
@@ -263,9 +261,7 @@ async def _trigger_file_deletion_cleanup(
     try:
         # Initialize analysis service
         embedding_service = EmbeddingService()
-        analysis_service = WorkspaceAnalysisService(
-            db, embedding_service=embedding_service
-        )
+        analysis_service = WorkspaceAnalysisService(db)
 
         # Remove concepts associated with this file
         await analysis_service._remove_file_concepts(file_path, workspace_id)

@@ -18,6 +18,7 @@ from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 from app.routes.search import router as search_router
 from app.routes.knowledge_graph import router as knowledge_graph_router
+from app.routes.workspace_topics import router as workspace_topics_router
 
 # Import migration service for test database setup
 from app.services.migration_service import MigrationService
@@ -73,6 +74,11 @@ def app():
     test_app.include_router(search_router, prefix="/api/search", tags=["search"])
     test_app.include_router(
         knowledge_graph_router, prefix="/api/knowledge-graph", tags=["knowledge-graph"]
+    )
+    test_app.include_router(
+        workspace_topics_router,
+        prefix="/api/workspace-topics",
+        tags=["workspace-topics"],
     )
 
     return test_app

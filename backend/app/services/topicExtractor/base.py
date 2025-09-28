@@ -3,10 +3,10 @@ Base classes and interfaces for topic extraction.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from ...models import TopicArea
+from ...models import TopicArea, TopicConceptLink
 
 
 class BaseTopicExtractor(ABC):
@@ -21,7 +21,7 @@ class BaseTopicExtractor(ABC):
     @abstractmethod
     async def extract_topics(
         self, workspace_id: int, concepts_data: List[Dict[str, Any]]
-    ) -> List[TopicArea]:
+    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
         """
         Extract topic areas from concept data.
 
@@ -30,7 +30,8 @@ class BaseTopicExtractor(ABC):
             concepts_data: List of concept dictionaries with id, name, description, relevance_score
 
         Returns:
-            List of discovered TopicArea objects
+            Tuple of (topic_areas, concept_links) where topic_areas is a list of discovered TopicArea objects
+            and concept_links is a list of TopicConceptLink objects connecting concepts to topic areas
         """
         pass
 
