@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from backend.app.models.quiz_models import (
+from backend.app.models.quiz import (
     QuestionType,
     DifficultyLevel,
     QuestionBase,

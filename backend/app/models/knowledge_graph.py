@@ -79,7 +79,7 @@ class ConceptFile(ConceptFileBase):
         from_attributes = True
 
 
-# New models for workspace-level topic discovery and learning paths
+# Simplified topic-only models for workspace topic discovery
 
 
 class TopicAreaBase(BaseModel):
@@ -196,6 +196,47 @@ class LearningRecommendation(LearningRecommendationBase):
 
     class Config:
         from_attributes = True
+
+
+# Topic Relationship models for the knowledge graph
+
+
+class TopicRelationshipBase(BaseModel):
+    """Base model for relationships between topics"""
+
+    source_topic_id: str = Field(..., description="Source topic area ID")
+    target_topic_id: str = Field(..., description="Target topic area ID")
+    relationship_type: str = Field(
+        ...,
+        description="Type of relationship: relates_to, builds_on, contrasts_with, contains, precedes",
+    )
+    strength: float = Field(..., description="Relationship strength (0.0-1.0)")
+    reasoning: Optional[str] = Field(
+        None, description="LLM-generated reasoning for the relationship"
+    )
+
+
+class TopicRelationshipCreate(TopicRelationshipBase):
+    relationship_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()), description="Unique relationship ID"
+    )
+
+
+class TopicRelationship(TopicRelationshipBase):
+    relationship_id: str = Field(..., description="Unique relationship ID")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceTopicGraph(BaseModel):
+    """Knowledge graph structure for a workspace"""
+
+    workspace_id: int
+    topics: List[TopicArea]
+    relationships: List[TopicRelationship]
 
 
 class WorkspaceTopicAnalysis(BaseModel):

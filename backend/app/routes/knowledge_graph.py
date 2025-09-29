@@ -116,7 +116,7 @@ async def analyze_workspace(
                 status_code=500, detail=f"Error initializing embedding model: {str(e)}"
             )
 
-    analysis_service = WorkspaceAnalysisService(db)
+    analysis_service = WorkspaceAnalysisService(db=db, extractor_type="heuristic")
 
     try:
         # Run analysis
@@ -212,7 +212,9 @@ async def get_workspace_knowledge_graph(
                 else:
                     print(f"[KG] Embedding model already initialized")
 
-                analysis_service = WorkspaceAnalysisService(db, kg_service=kg_service)
+                analysis_service = WorkspaceAnalysisService(
+                    db=db, extractor_type="heuristic"
+                )
 
                 try:
                     print(f"[KG] Starting workspace analysis via endpoint...")

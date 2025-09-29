@@ -1,16 +1,16 @@
 """
 BERTopic-based topic extractor for workspace analysis.
-Uses transformer embeddings and advanced clustering for superior topic discovery.
+Works directly with documents for superior topic discovery.
 """
 
 import math
 import json
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
-import logging
 import uuid
 import numpy as np
-from collections import defaultdict
+from pathlib import Path
 
 from .base import BaseTopicExtractor
 from ...models import TopicArea, TopicConceptLink
@@ -56,7 +56,6 @@ class BERTopicExtractor(BaseTopicExtractor):
         # Integration parameters
         embedding_service: Optional[EmbeddingService] = None,
         calculate_probabilities: bool = True,
-        use_hierarchy: bool = True,
         **kwargs,
     ):
         super().__init__(
@@ -75,7 +74,6 @@ class BERTopicExtractor(BaseTopicExtractor):
         self.coherence_threshold = coherence_threshold
         self.outlier_threshold = outlier_threshold
         self.calculate_probabilities = calculate_probabilities
-        self.use_hierarchy = use_hierarchy
 
         # Initialize models
         self.umap_model = umap_model or umap.UMAP(
@@ -101,8 +99,6 @@ class BERTopicExtractor(BaseTopicExtractor):
 
         # Services
         self.embedding_service = embedding_service or EmbeddingService.get_instance()
-        self._bertopic_model = None  # Lazy initialization
-        self._model_cache = {}
 
         logging.info(
             f"Initialized BERTopicExtractor with model={model_name}, min_topic_size={min_topic_size}, "
@@ -110,450 +106,339 @@ class BERTopicExtractor(BaseTopicExtractor):
         )
 
     async def extract_topics(
-        self, workspace_id: int, concepts_data: List[Dict[str, Any]]
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+        self, workspace_id: int, file_data: List[Dict[str, Any]]
+    ) -> List[TopicArea]:
         """
-        Extract topic areas using BERTopic.
+        Extract topic areas directly from documents using BERTopic.
+
+        Args:
+            workspace_id: ID of the workspace
+            file_data: List of document dictionaries with content, file_path, etc.
+
+        Returns:
+            List of discovered TopicArea objects
         """
         logging.info(
-            f"Starting BERTopic extraction for workspace {workspace_id} with {len(concepts_data)} concepts"
+            f"Starting BERTopic extraction for workspace {workspace_id} with {len(file_data)} documents"
         )
 
-        if len(concepts_data) < self.min_topic_concepts:
+        if len(file_data) < self.min_topic_concepts:
             logging.warning(
-                f"Insufficient concepts ({len(concepts_data)}) for BERTopic extraction, minimum required: {self.min_topic_concepts}"
+                f"Insufficient documents ({len(file_data)}) for BERTopic extraction, minimum required: {self.min_topic_concepts}"
             )
-            return [], []
+            return []
 
-        # Prepare documents for BERTopic
-        documents = await self._prepare_documents(concepts_data)
-        logging.info(f"Prepared {len(documents)} documents for BERTopic processing")
+        # Extract document texts
+        document_texts = await self._extract_document_texts(file_data)
+        logging.info(
+            f"Extracted {len(document_texts)} document texts for BERTopic processing"
+        )
 
-        # Get or create BERTopic model
-        bertopic_model = await self._get_bertopic_model()
+        if len(document_texts) < self.min_topic_concepts:
+            logging.warning("No valid document texts found after extraction")
+            return []
+
+        # Create and fit BERTopic processor
+        config = self._create_bertopic_config()
+        processor = self._create_bertopic_processor(config)
 
         try:
-            # Fit BERTopic model
-            logging.info("Fitting BERTopic model...")
-            topics, probs = bertopic_model.fit_transform(documents)
+            # Process documents with BERTopic
+            logging.info("Processing documents with BERTopic...")
+            topics, probs = processor.process_documents(document_texts)
 
             # Get topic information
-            topic_info = bertopic_model.get_topic_info()
+            all_topics = processor.get_topics()
+            topic_info = processor.get_statistics()
             logging.info(
-                f"BERTopic found {len(topic_info)} topics (including outliers)"
+                f"BERTopic found {len(all_topics)} topics from {topic_info.get('total_documents', 0)} documents"
             )
 
             # Convert to our format
-            topic_areas, concept_links = await self._convert_bertopic_results(
-                bertopic_model, topics, probs, concepts_data, workspace_id
+            topic_areas = await self._convert_bertopic_results_to_areas(
+                all_topics, topics, probs, file_data, workspace_id
             )
 
             # Filter and rank topics by quality
-            topic_areas = await self._filter_and_rank_topics(
-                topic_areas, bertopic_model
-            )
+            topic_areas = await self._filter_and_rank_topics(topic_areas)
 
             # Limit to max_topic_areas
             topic_areas = topic_areas[: self.max_topic_areas]
 
             logging.info(
-                f"BERTopic extraction completed: {len(topic_areas)} topic areas, {len(concept_links)} concept links"
+                f"BERTopic extraction completed: {len(topic_areas)} topic areas"
             )
-            return topic_areas, concept_links
+            return topic_areas
 
         except Exception as e:
             logging.error(f"Error in BERTopic extraction: {e}")
-            # Fallback to simple clustering
-            logging.info("Falling back to simple clustering approach")
-            return await self._fallback_clustering(workspace_id, concepts_data)
+            # Fallback to simple clustering if available
+            logging.info("Falling back to basic clustering approach")
+            return await self._fallback_clustering(workspace_id, file_data)
 
-    async def _prepare_documents(
-        self, concepts_data: List[Dict[str, Any]]
+    async def _extract_document_texts(
+        self, documents_data: List[Dict[str, Any]]
     ) -> List[str]:
-        """Prepare concept data as documents for BERTopic"""
-        documents = []
+        """
+        Extract document texts from documents data.
 
-        for concept in concepts_data:
-            # Create rich document representation
-            doc_parts = []
+        Args:
+            documents_data: List of document dictionaries with 'content' field
 
-            # Add concept name (most important)
-            if concept.get("name"):
-                doc_parts.append(concept["name"])
+        Returns:
+            List of document text strings
+        """
+        document_texts = []
 
-            # Add description if available
-            if concept.get("description"):
-                doc_parts.append(concept["description"])
+        for doc_data in documents_data:
+            # Extract content field
+            content = doc_data.get("content", "").strip()
+            if content:
+                document_texts.append(content)
 
-            # Add context from related concepts if available
-            # This could be enhanced with knowledge graph relationships
-            context = self._get_concept_context(concept.get("id"))
-            if context:
-                doc_parts.extend(context)
-
-            # Join parts into a coherent document
-            document = " ".join(doc_parts).strip()
-            if document:
-                documents.append(document)
+            # Alternative: if content is not available, try other fields
             else:
-                # Fallback to just the name
-                documents.append(concept.get("name", "unknown"))
+                # Try alternative field names that might contain text
+                alt_content = (
+                    doc_data.get("text")
+                    or doc_data.get("body")
+                    or doc_data.get("document")
+                    or ""
+                ).strip()
+                if alt_content:
+                    document_texts.append(alt_content)
 
-        return documents
+        # Remove empty or very short documents
+        document_texts = [doc for doc in document_texts if len(doc.split()) >= 3]
 
-    def _get_concept_context(self, concept_id: str) -> List[str]:
-        """Get additional context for a concept (placeholder for future enhancement)"""
-        # This could be enhanced to query the knowledge graph for related concepts
-        return []
+        return document_texts
 
-    async def _get_bertopic_model(self) -> BERTopic:
-        """Get or create BERTopic model with caching"""
-        # Create cache key from configuration
-        cache_key = self._get_model_cache_key()
+    def _create_bertopic_config(self) -> "TopicModelingConfig":
+        """Create BERTopic configuration from extractor parameters."""
+        # Import here to avoid circular imports
+        try:
+            from bertopic import TopicModelingConfig as BERTopicConfig
+        except ImportError:
+            # Fallback config if import fails
+            class BERTopicConfig:
+                def __init__(self, **kwargs):
+                    for k, v in kwargs.items():
+                        setattr(self, k, v)
 
-        if cache_key in self._model_cache:
-            logging.info(f"Using cached BERTopic model for key: {cache_key}")
-            return self._model_cache[cache_key]
-
-        # Create new model
-        logging.info(f"Creating new BERTopic model with key: {cache_key}")
-
-        # Initialize BERTopic with custom components
-        bertopic_model = BERTopic(
-            # Model configuration
-            embedding_model=self.model_name,
-            umap_model=self.umap_model,
-            hdbscan_model=self.hdbscan_model,
-            vectorizer_model=self.vectorizer_model,
-            representation_model=self.representation_model,
-            # Topic configuration
-            nr_topics=self.nr_topics,
+        config = BERTopicConfig(
+            model_name=self.model_name,
             min_topic_size=self.min_topic_size,
-            # Behavior configuration
-            calculate_probabilities=self.calculate_probabilities,
-            verbose=True,
+            max_topics=self.nr_topics,
+            cluster_epsilon=0.4,  # Default for now
+            umap_neighbors=8,
+            umap_components=3,
+            diversity=self.diversity,
+            verbose=False,  # Controlled by logging
         )
 
-        # Cache the model
-        self._model_cache[cache_key] = bertopic_model
+        return config
 
-        return bertopic_model
-
-    def _get_model_cache_key(self) -> str:
-        """Generate cache key for model configuration"""
-        return (
-            f"{self.model_name}_{self.min_topic_size}_{self.nr_topics}_{self.diversity}"
+    def _create_bertopic_processor(self, config: "TopicModelingConfig") -> BERTopic:
+        """Create BERTopic model instance with custom configuration."""
+        # Create BERTopic with configuration
+        model = BERTopic(
+            embedding_model=config.model_name,
+            umap_model=umap.UMAP(
+                n_neighbors=config.umap_neighbors,
+                n_components=config.umap_components,
+                min_dist=0.0,
+                metric="cosine",
+                random_state=42,
+            ),
+            hdbscan_model=hdbscan.HDBSCAN(
+                min_cluster_size=config.min_topic_size,
+                metric="euclidean",
+                cluster_selection_epsilon=config.cluster_epsilon,
+                prediction_data=True,
+            ),
+            vectorizer_model=CountVectorizer(
+                min_df=2, max_df=0.9, stop_words="english", ngram_range=(1, 2)
+            ),
+            representation_model=KeyBERTInspired(),
+            nr_topics=config.max_topics,
+            min_topic_size=config.min_topic_size,
+            calculate_probabilities=True,
+            verbose=config.verbose,
         )
 
-    async def _convert_bertopic_results(
+        return model
+
+    async def _convert_bertopic_results_to_areas(
         self,
-        bertopic_model: BERTopic,
+        all_topics: Dict[int, Dict[str, Any]],
         topics: List[int],
         probs: np.ndarray,
-        concepts_data: List[Dict[str, Any]],
+        file_data: List[Dict[str, Any]],
         workspace_id: int,
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
-        """Convert BERTopic results to our TopicArea and TopicConceptLink format"""
-
-        # Get topic information
-        topic_info = bertopic_model.get_topic_info()
-
-        # Group concepts by topic
-        topic_concepts = defaultdict(list)
-        topic_probs = defaultdict(list)
-
-        for i, (topic_id, concept) in enumerate(zip(topics, concepts_data)):
-            if topic_id != -1:  # Skip outliers
-                topic_concepts[topic_id].append(concept)
-                if probs is not None and i < len(probs):
-                    topic_probs[topic_id].append(probs[i])
-
-        # Create topic areas
+    ) -> List[TopicArea]:
+        """Convert BERTopic results to TopicArea format."""
         topic_areas = []
-        concept_links = []
 
-        for topic_id in topic_concepts:
+        for topic_id, topic_data in all_topics.items():
             if topic_id == -1:  # Skip outliers
                 continue
 
-            concepts = topic_concepts[topic_id]
-            if len(concepts) < self.min_topic_concepts:
+            # Get document count for this topic
+            doc_count = topic_data.get("count", 0)
+            if doc_count < self.min_topic_concepts:
                 continue
 
-            # Get topic words and their scores
-            topic_words = bertopic_model.get_topic(topic_id)
-
-            # Create topic name from top words
-            topic_name = self._generate_bertopic_name(topic_words)
-
-            # Create topic description
-            topic_description = self._generate_bertopic_description(
-                topic_words, concepts
+            # Create topic name and description
+            topic_name = self._generate_topic_name_from_bertopic(topic_data)
+            topic_description = self._generate_topic_description_from_bertopic(
+                topic_data
             )
 
-            # Calculate topic metrics
-            avg_relevance = sum(c.get("relevance_score", 0.5) for c in concepts) / len(
-                concepts
-            )
+            # Calculate coverage score based on topic attributes
+            topic_words = topic_data.get("words", [])
+            coverage_score = min(1.0, len(topic_words) / 10.0)  # Simple heuristic
 
-            # Get topic probabilities for this topic
-            topic_prob_list = topic_probs.get(topic_id, [])
-            avg_probability = np.mean(topic_prob_list) if topic_prob_list else 0.5
-
-            # Create enhanced topic area
+            # Create topic area
             topic_area = TopicArea(
                 topic_area_id=f"bertopic_{workspace_id}_{topic_id}",
                 workspace_id=workspace_id,
                 name=topic_name,
                 description=topic_description,
-                coverage_score=min(1.0, avg_relevance * avg_probability),
-                concept_count=len(concepts),
-                file_count=0,  # Will be calculated by service
-                explored_percentage=0.0,  # Will be calculated later
+                coverage_score=coverage_score,
+                concept_count=doc_count,  # Documents count
+                file_count=0,  # Updated by service based on topic_document_counts
+                explored_percentage=0.0,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )
 
-            # Add BERTopic-specific metadata
+            # Add metadata
             topic_area._bertopic_metadata = {
                 "topic_id": topic_id,
                 "topic_words": topic_words,
-                "avg_probability": avg_probability,
-                "coherence_score": self._calculate_topic_coherence(topic_words),
-                "outlier_score": self._calculate_outlier_score(concepts),
             }
 
             topic_areas.append(topic_area)
 
-            # Create concept links with BERTopic probabilities
-            for concept in concepts:
-                # Get probability for this concept in this topic
-                concept_idx = concepts_data.index(concept)
-                probability = 0.5  # Default
+        return topic_areas
 
-                if probs is not None and concept_idx < len(probs):
-                    topic_probabilities = probs[concept_idx]
-                    if topic_probabilities is not None and topic_id < len(
-                        topic_probabilities
-                    ):
-                        probability = topic_probabilities[topic_id]
+    def _generate_topic_name_from_bertopic(self, topic_data: Dict[str, Any]) -> str:
+        """Generate topic name from BERTopic topic data."""
+        # Try to use the name field if available
+        name = topic_data.get("name", "").strip()
+        if name and name.lower() not in ["none", "", "unknown"]:
+            return name
 
-                link = TopicConceptLink(
-                    topic_concept_link_id=str(uuid.uuid4()),
-                    topic_area_id=topic_area.topic_area_id,
-                    concept_id=concept["id"],
-                    relevance_score=min(
-                        1.0, concept.get("relevance_score", 0.5) * probability
-                    ),
-                    explored=False,  # Will be updated by service
-                )
-
-                # Add BERTopic-specific metadata to link
-                link._bertopic_metadata = {
-                    "topic_probability": probability,
-                    "topic_id": topic_id,
-                }
-
-                concept_links.append(link)
-
-        return topic_areas, concept_links
-
-    def _generate_bertopic_name(self, topic_words: List[Tuple[str, float]]) -> str:
-        """Generate topic name from BERTopic words"""
-        if not topic_words:
-            return "General Topic"
-
-        # Use top 2-3 most relevant words
-        top_words = [word for word, score in topic_words[:3]]
-        name = " ".join(top_words).title()
-
-        # Ensure name is not too long
-        if len(name) > 50:
-            name = name[:47] + "..."
-
-        return name
-
-    def _generate_bertopic_description(
-        self, topic_words: List[Tuple[str, float]], concepts: List[Dict[str, Any]]
-    ) -> str:
-        """Generate topic description from BERTopic words and concepts"""
-        # Start with concept names
-        concept_names = [c.get("name", "") for c in concepts[:5]]
-        concept_str = ", ".join([name for name in concept_names if name])
-
-        if len(concepts) > 5:
-            concept_str += f", and {len(concepts) - 5} more"
-
-        # Add top words context
+        # Fall back to using top words
+        topic_words = topic_data.get("words", [])
         if topic_words:
-            word_str = ", ".join([word for word, score in topic_words[:5]])
-            return f"Topic covering concepts like {concept_str}. Key themes: {word_str}"
-        else:
-            return f"Topic covering concepts like {concept_str}"
+            # Use top 2-3 most relevant words
+            top_words = [word for word, score in topic_words[:3]]
+            name = " ".join(top_words).title()
 
-    def _calculate_topic_coherence(self, topic_words: List[Tuple[str, float]]) -> float:
-        """Calculate coherence score for a topic based on word associations"""
-        if len(topic_words) < 2:
-            return 0.0
+            # Ensure name is not too long
+            if len(name) > 50:
+                name = name[:47] + "..."
+            return name
 
-        # Simple coherence measure based on word scores
-        scores = [score for word, score in topic_words[:5]]
-        if not scores:
-            return 0.0
+        return "General Topic"
 
-        # Normalize scores and calculate variance (lower variance = higher coherence)
-        mean_score = sum(scores) / len(scores)
-        variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
+    def _generate_topic_description_from_bertopic(
+        self, topic_data: Dict[str, Any]
+    ) -> str:
+        """Generate topic description from BERTopic topic data."""
+        topic_name = topic_data.get("name", "this topic")
+        count = topic_data.get("count", 0)
+        words = topic_data.get("words", [])
 
-        # Convert variance to coherence (inverse relationship)
-        coherence = 1.0 / (1.0 + variance)
+        # Start with count and basic description
+        description = f"Topic discovered in {count} documents"
 
-        return min(1.0, coherence)
+        if words:
+            # Add top words to description
+            top_words = [word for word, score in words[:5]]
+            word_str = ", ".join(top_words)
+            description += f". Key themes include: {word_str}"
 
-    def _calculate_outlier_score(self, concepts: List[Dict[str, Any]]) -> float:
-        """Calculate how likely this topic is to be an outlier"""
-        if len(concepts) < 2:
-            return 1.0
-
-        # Simple heuristic: topics with very low average relevance are likely outliers
-        avg_relevance = sum(c.get("relevance_score", 0.5) for c in concepts) / len(
-            concepts
-        )
-
-        # Lower relevance = higher outlier score
-        outlier_score = 1.0 - avg_relevance
-
-        return min(1.0, outlier_score)
+        return description
 
     async def _filter_and_rank_topics(
-        self, topic_areas: List[TopicArea], bertopic_model: BERTopic
+        self, topic_areas: List[TopicArea]
     ) -> List[TopicArea]:
-        """Filter and rank topics by quality metrics"""
+        """Filter and rank topics by quality metrics (simplified version)."""
+        # Since we're not using a BERTopic model directly, rank by coverage score and document count
 
         # Calculate quality scores for each topic
         for topic_area in topic_areas:
-            metadata = getattr(topic_area, "_bertopic_metadata", {})
+            # Quality score based on coverage and document count
+            coverage_score = topic_area.coverage_score
+            doc_count = topic_area.concept_count
 
-            # Combine multiple quality metrics
-            coherence = metadata.get("coherence_score", 0.0)
-            outlier_score = metadata.get("outlier_score", 0.0)
-            concept_count = topic_area.concept_count
-            avg_probability = metadata.get("avg_probability", 0.5)
+            # Simple quality score: combine coverage with document count bonus
+            doc_count_bonus = min(1.0, doc_count / 15.0)  # Bonus for more documents
 
-            # Quality score combines coherence, size, and probability
-            # Penalize outliers and small topics
-            size_bonus = min(1.0, concept_count / 10.0)  # Bonus for larger topics
-            outlier_penalty = 1.0 - outlier_score
-
-            quality_score = (
-                coherence * 0.4
-                + avg_probability * 0.3
-                + size_bonus * 0.2
-                + outlier_penalty * 0.1
-            )
+            quality_score = (coverage_score * 0.7) + (doc_count_bonus * 0.3)
 
             topic_area._quality_score = quality_score
 
-        # Filter by quality threshold
-        filtered_topics = [
-            ta
-            for ta in topic_areas
-            if getattr(ta, "_quality_score", 0.0) >= self.coherence_threshold
-        ]
+        # Sort by quality score (higher is better)
+        topic_areas.sort(key=lambda x: getattr(x, "_quality_score", 0.0), reverse=True)
 
-        # Sort by quality score
-        filtered_topics.sort(
-            key=lambda x: getattr(x, "_quality_score", 0.0), reverse=True
-        )
+        logging.info(f"Ranked {len(topic_areas)} topics by quality score")
 
-        logging.info(
-            f"Filtered {len(topic_areas)} topics to {len(filtered_topics)} high-quality topics "
-            f"(threshold: {self.coherence_threshold})"
-        )
-
-        return filtered_topics
+        return topic_areas
 
     async def _fallback_clustering(
-        self, workspace_id: int, concepts_data: List[Dict[str, Any]]
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
-        """Fallback to simple clustering if BERTopic fails"""
-        logging.warning("Using fallback clustering approach")
+        self, workspace_id: int, file_data: List[Dict[str, Any]]
+    ) -> List[TopicArea]:
+        """Fallback clustering when BERTopic fails."""
+        logging.warning("Using fallback clustering for documents")
 
-        # Simple approach: group by concept name similarity
-        from .embedding_cluster_extractor import EmbeddingClusterExtractor
-
-        fallback_extractor = EmbeddingClusterExtractor(
-            embedding_service=self.embedding_service,
-            similarity_threshold=0.6,
-            min_topic_concepts=self.min_topic_concepts,
-            max_topic_areas=self.max_topic_areas,
-        )
-
-        return await fallback_extractor.extract_topics(workspace_id, concepts_data)
-
-    def get_topic_visualization_data(self, bertopic_model: BERTopic) -> Dict[str, Any]:
-        """Get visualization data for BERTopic results"""
         try:
-            # Get topic barchart data
-            viz_data = {
-                "topic_info": bertopic_model.get_topic_info().to_dict("records"),
-                "topic_word_scores": {},
-                "topic_sizes": bertopic_model.get_topic_info()["Count"].tolist(),
-            }
+            # Simple clustering: create one general topic with all documents
+            if not file_data:
+                return []
 
-            # Get word scores for each topic
-            for topic_id in bertopic_model.get_topics():
-                if topic_id != -1:  # Skip outliers
-                    words = bertopic_model.get_topic(topic_id)
-                    viz_data["topic_word_scores"][topic_id] = words
+            topic_area = TopicArea(
+                topic_area_id=f"fallback_{workspace_id}_general",
+                workspace_id=workspace_id,
+                name="General Documents",
+                description=f"General topic covering {len(file_data)} documents",
+                coverage_score=min(1.0, len(file_data) / 10.0),  # Simple heuristic
+                concept_count=len(file_data),
+                file_count=0,
+                explored_percentage=0.0,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
 
-            return viz_data
+            return [topic_area]
 
         except Exception as e:
-            logging.error(f"Error generating visualization data: {e}")
-            return {}
+            logging.error(f"Fallback clustering failed: {e}")
+            return []
 
-    def get_topic_hierarchy(self, bertopic_model: BERTopic) -> Dict[int, List[int]]:
-        """Extract hierarchical topic relationships"""
-        try:
-            # This is a simplified hierarchy extraction
-            # In practice, you might use hierarchical BERTopic or custom clustering
-            hierarchy = {}
+    # Old concept-based methods removed:
+    # - _prepare_documents (concepts_data based)
+    # - _get_concept_context (concept-specific)
 
-            topic_info = bertopic_model.get_topic_info()
-            topic_sizes = topic_info.set_index("Topic")["Count"].to_dict()
+    # Old concept-based methods removed:
+    # - _prepare_documents (concepts_data based)
+    # - _get_concept_context (concept-specific)
+    # - _get_bertopic_model (old caching method)
+    # - _get_model_cache_key (old caching key)
 
-            # Group topics by size ranges (simple hierarchy)
-            size_ranges = {"large": [], "medium": [], "small": []}
-
-            for topic_id, size in topic_sizes.items():
-                if topic_id == -1:
-                    continue
-
-                if size >= 20:
-                    size_ranges["large"].append(topic_id)
-                elif size >= 10:
-                    size_ranges["medium"].append(topic_id)
-                else:
-                    size_ranges["small"].append(topic_id)
-
-            # Create simple hierarchy (large topics contain medium, etc.)
-            all_large = size_ranges["large"]
-            all_medium = size_ranges["medium"]
-            all_small = size_ranges["small"]
-
-            for topic_id in all_medium:
-                hierarchy[topic_id] = [
-                    parent for parent in all_large if parent != topic_id
-                ]
-
-            for topic_id in all_small:
-                hierarchy[topic_id] = [
-                    parent for parent in all_medium + all_large if parent != topic_id
-                ]
-
-            return hierarchy
-
-        except Exception as e:
-            logging.error(f"Error extracting topic hierarchy: {e}")
-            return {}
+    # Old concept-based methods removed:
+    # - _prepare_documents (concepts_data based)
+    # - _get_concept_context (concept-specific)
+    # - _get_bertopic_model (old caching method)
+    # - _get_model_cache_key (old caching key)
+    # - _convert_bertopic_results (old concept-based conversion)
+    # - _generate_bertopic_name (old naming method)
+    # - _generate_bertopic_description (old description method)
+    # - _calculate_topic_coherence (unused coherence calculation)
+    # - _calculate_outlier_score (unused outlier calculation)
+    # - _filter_and_rank_topics (old version with bertopic_model parameter)
+    # - _fallback_clustering (old concepts_data version)
+    # - get_topic_visualization_data (unused visualization method)
+    # - get_topic_hierarchy (unused hierarchy method)

@@ -15,11 +15,7 @@ from ..models import (
     LearningRecommendation,
     WorkspaceTopicAnalysis,
 )
-from ..services import (
-    WorkspaceTopicDiscoveryService,
-    KnowledgeGraphService,
-    EmbeddingService,
-)
+from ..services import WorkspaceAnalysisService
 
 router = APIRouter(prefix="/api/workspace-topics", tags=["workspace-topics"])
 
@@ -27,61 +23,50 @@ router = APIRouter(prefix="/api/workspace-topics", tags=["workspace-topics"])
 @router.post("/analyze/{workspace_id}")
 async def analyze_workspace_topics(
     workspace_id: int,
-    force_reanalysis: bool = False,
+    extractor_type: str = "heuristic",  # Allow choosing extractor type
     db: AsyncSession = Depends(get_db),
-) -> WorkspaceTopicAnalysis:
+) -> dict:
     """
-    Analyze a workspace to discover major topic areas and generate learning insights.
+    Analyze a workspace to extract topic areas.
 
     Args:
         workspace_id: ID of the workspace to analyze
-        force_reanalysis: If True, re-analyze even if recent analysis exists
+        extractor_type: "heuristic" or "bertopic" extractor to use
 
     Returns:
-        Complete analysis results with topic areas, learning paths, and recommendations
+        Analysis results with topic statistics
     """
     logging.info(
-        f"Received request to analyze workspace topics for workspace {workspace_id}"
+        f"Received request to analyze workspace {workspace_id} using {extractor_type} extractor"
     )
+
     try:
-        # Initialize services
-        logging.info("Initializing KnowledgeGraphService")
-        kg_service = KnowledgeGraphService(db)
-
-        logging.info("Initializing EmbeddingService")
-        embedding_service = EmbeddingService()  # Initialize with default path
-        await embedding_service.initialize()  # Initialize the embedding service
-
-        logging.info("Initializing WorkspaceTopicDiscoveryService")
-        from ..services.concept_extraction.extractors import EntityRecognitionExtractor
-        from ..services.concept_extraction.rankers import TFIDFRanking
-
-        extractor = EntityRecognitionExtractor(use_spacy=True)
-        ranker = TFIDFRanking()
-        from ..services import WorkspaceAnalysisService
-
-        workspace_analysis_service = WorkspaceAnalysisService(
-            db,
-            extractor,
-            ranker,
-            kg_service=kg_service,
+        # Get workspace path from database
+        workspace_query = await db.execute(
+            "SELECT folder_path FROM workspaces WHERE id = :workspace_id",
+            {"workspace_id": workspace_id},
         )
+        workspace_record = workspace_query.fetchone()
 
-        topic_service = WorkspaceTopicDiscoveryService(
-            db, kg_service, embedding_service, workspace_analysis_service
+        if not workspace_record:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        workspace_path = workspace_record.folder_path
+
+        # Initialize streamlined workspace analysis service
+        workspace_analysis_service = WorkspaceAnalysisService(
+            db=db,
+            extractor_type=extractor_type,
         )
 
         # Perform analysis
-        logging.info(f"Starting analysis for workspace {workspace_id}")
-        analysis = await topic_service.analyze_workspace_topics(
-            workspace_id, force_reanalysis
+        logging.info(f"Starting topic analysis for workspace {workspace_id}")
+        result = await workspace_analysis_service.analyze_workspace(
+            workspace_id, workspace_path
         )
 
         logging.info(f"Successfully completed analysis for workspace {workspace_id}")
-        logging.info(
-            f"Analysis results: {len(analysis.topic_areas)} topic areas, {len(analysis.learning_paths)} learning paths, {len(analysis.recommendations)} recommendations"
-        )
-        return analysis
+        return result
 
     except Exception as e:
         logging.error(
@@ -92,40 +77,47 @@ async def analyze_workspace_topics(
         )
 
 
-@router.get("/{workspace_id}")
-async def get_workspace_topic_analysis(
+@router.get("/{workspace_id}/summary")
+async def get_workspace_topic_summary(
     workspace_id: int,
     db: AsyncSession = Depends(get_db),
-) -> Optional[WorkspaceTopicAnalysis]:
+) -> dict:
     """
-    Get stored topic analysis for a workspace.
+    Get topic analysis summary for a workspace.
 
     Args:
         workspace_id: ID of the workspace
 
     Returns:
-        Stored analysis results if available
+        Summary with topic area counts
     """
     try:
-        # Initialize service
-        kg_service = KnowledgeGraphService(db)
-        embedding_service = EmbeddingService()  # Initialize with default path
-        topic_service = WorkspaceTopicDiscoveryService(
-            db, kg_service, embedding_service
-        )
+        # Use database layer
+        db_workspace_topics = WorkspaceTopicsDatabase(db)
+        topic_areas = await db_workspace_topics.get_workspace_topic_areas(workspace_id)
 
-        # Get stored analysis
-        analysis = await topic_service.get_workspace_topic_analysis(workspace_id)
-
-        return analysis
+        return {
+            "workspace_id": workspace_id,
+            "total_topics": len(topic_areas),
+            "topic_areas": [
+                {
+                    "id": ta.topic_area_id,
+                    "name": ta.name,
+                    "concept_count": ta.concept_count,
+                    "coverage_score": ta.coverage_score,
+                    "explored_percentage": ta.explored_percentage,
+                }
+                for ta in topic_areas
+            ],
+        }
 
     except Exception as e:
         logging.error(
-            f"Error retrieving workspace topic analysis for workspace {workspace_id}: {e}"
+            f"Error retrieving workspace topic summary for workspace {workspace_id}: {e}"
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve workspace topic analysis: {str(e)}",
+            detail=f"Failed to retrieve workspace topic summary: {str(e)}",
         )
 
 

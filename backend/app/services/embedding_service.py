@@ -168,7 +168,7 @@ class EmbeddingService:
             # Get or create collection for this model
             # Replace all non-alphanumeric characters with underscores for valid collection names
             safe_model_name = "".join(c if c.isalnum() else "_" for c in model_name)
-            collection_name = f"workspace_concepts_{safe_model_name}"
+            collection_name = f"workspace_topics_{safe_model_name}"
             self.collection = self.chroma_client.get_or_create_collection(
                 name=collection_name,
                 metadata={
@@ -234,7 +234,7 @@ class EmbeddingService:
                 old_safe_name = "".join(
                     c if c.isalnum() else "_" for c in self.current_model_name
                 )
-                old_collection_name = f"workspace_concepts_{old_safe_name}"
+                old_collection_name = f"workspace_topics_{old_safe_name}"
                 try:
                     old_client = chromadb.PersistentClient(
                         path=str(self.persist_directory / self.current_model_name)
@@ -323,14 +323,14 @@ class EmbeddingService:
         embeddings = await self.embed_texts([text])
         return embeddings[0]
 
-    async def add_concept_embedding(
-        self, concept_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
+    async def add_topic_embedding(
+        self, topic_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Add a concept embedding to the vector database
+        Add a topic embedding to the vector database
 
         Args:
-            concept_id: Unique concept identifier
+            topic_id: Unique topic identifier
             text: Text content to embed
             metadata: Additional metadata
 
@@ -348,7 +348,7 @@ class EmbeddingService:
             doc_metadata = metadata or {}
             doc_metadata.update(
                 {
-                    "concept_id": concept_id,
+                    "topic_id": topic_id,
                     "model": self.current_model_name,
                     "created_at": datetime.utcnow().isoformat(),
                 }
@@ -356,7 +356,7 @@ class EmbeddingService:
 
             # Add to collection
             self.collection.add(
-                ids=[concept_id],
+                ids=[topic_id],
                 embeddings=[embedding],
                 documents=[text],
                 metadatas=[doc_metadata],
@@ -365,14 +365,14 @@ class EmbeddingService:
             return True
 
         except Exception as e:
-            print(f"Failed to add concept embedding: {e}")
+            print(f"Failed to add topic embedding: {e}")
             return False
 
-    async def search_similar_concepts(
+    async def search_similar_topics(
         self, query_text: str, limit: int = 10, threshold: float = 0.0
     ) -> List[Dict[str, Any]]:
         """
-        Search for concepts similar to the query text
+        Search for topics similar to the query text
 
         Args:
             query_text: Text to search for
@@ -380,7 +380,7 @@ class EmbeddingService:
             threshold: Similarity threshold (0-1)
 
         Returns:
-            List of similar concepts with scores
+            List of similar topics with scores
         """
         if not self.collection:
             return []
@@ -397,16 +397,16 @@ class EmbeddingService:
             )
 
             # Format results
-            similar_concepts = []
+            similar_topics = []
             if results["ids"] and len(results["ids"][0]) > 0:
-                for i, concept_id in enumerate(results["ids"][0]):
+                for i, topic_id in enumerate(results["ids"][0]):
                     distance = results["distances"][0][i]
                     similarity = 1 - distance  # Convert distance to similarity
 
                     if similarity >= threshold:
-                        similar_concepts.append(
+                        similar_topics.append(
                             {
-                                "concept_id": concept_id,
+                                "topic_id": topic_id,
                                 "similarity": similarity,
                                 "text": (
                                     results["documents"][0][i]
@@ -421,20 +421,20 @@ class EmbeddingService:
                             }
                         )
 
-            return similar_concepts
+            return similar_topics
 
         except Exception as e:
-            print(f"Failed to search similar concepts: {e}")
+            print(f"Failed to search similar topics: {e}")
             return []
 
-    async def update_concept_embedding(
-        self, concept_id: str, new_text: str, metadata: Optional[Dict[str, Any]] = None
+    async def update_topic_embedding(
+        self, topic_id: str, new_text: str, metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Update an existing concept embedding
+        Update an existing topic embedding
 
         Args:
-            concept_id: Concept to update
+            topic_id: Topic to update
             new_text: New text content
             metadata: Updated metadata
 
@@ -446,21 +446,21 @@ class EmbeddingService:
 
         try:
             # Remove old embedding
-            self.collection.delete(ids=[concept_id])
+            self.collection.delete(ids=[topic_id])
 
             # Add new embedding
-            return await self.add_concept_embedding(concept_id, new_text, metadata)
+            return await self.add_topic_embedding(topic_id, new_text, metadata)
 
         except Exception as e:
-            print(f"Failed to update concept embedding: {e}")
+            print(f"Failed to update topic embedding: {e}")
             return False
 
-    async def remove_concept_embedding(self, concept_id: str) -> bool:
+    async def remove_topic_embedding(self, topic_id: str) -> bool:
         """
-        Remove a concept embedding from the database
+        Remove a topic embedding from the database
 
         Args:
-            concept_id: Concept to remove
+            topic_id: Topic to remove
 
         Returns:
             True if successful
@@ -469,10 +469,10 @@ class EmbeddingService:
             return False
 
         try:
-            self.collection.delete(ids=[concept_id])
+            self.collection.delete(ids=[topic_id])
             return True
         except Exception as e:
-            print(f"Failed to remove concept embedding: {e}")
+            print(f"Failed to remove topic embedding: {e}")
             return False
 
     async def get_collection_stats(self) -> Dict[str, Any]:
@@ -484,7 +484,7 @@ class EmbeddingService:
             count = self.collection.count()
             return {
                 "model": self.current_model_name,
-                "total_concepts": count,
+                "total_topics": count,
                 "dimensions": self.AVAILABLE_MODELS.get(
                     self.current_model_name, {}
                 ).get("dimensions", 0),
@@ -492,16 +492,16 @@ class EmbeddingService:
         except Exception as e:
             return {"error": str(e)}
 
-    def generate_concept_id(self, text: str, workspace_id: int) -> str:
+    def generate_topic_id(self, text: str, workspace_id: int) -> str:
         """
-        Generate a deterministic concept ID from text and workspace
+        Generate a deterministic topic ID from text and workspace
 
         Args:
-            text: Concept text
+            text: Topic text
             workspace_id: Workspace identifier
 
         Returns:
-            Unique concept ID
+            Unique topic ID
         """
         # Create hash of text + workspace for deterministic ID
         content = f"{workspace_id}:{text.lower().strip()}"

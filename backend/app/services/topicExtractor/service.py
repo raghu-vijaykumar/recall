@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from .base import BaseTopicExtractor
-from .embedding_cluster_extractor import EmbeddingClusterExtractor
+from .heuristic_extractor import HeuristicExtractor
 from .bertopic_extractor import BERTopicExtractor
 from ...models import TopicArea, TopicConceptLink
 from ..embedding_service import EmbeddingService
@@ -50,7 +50,7 @@ class TopicExtractionService:
                 embedding_service=self.embedding_service, **self.extractor_config
             )
         elif self.extractor_type == "embedding_cluster":
-            return EmbeddingClusterExtractor(
+            return HeuristicExtractor(
                 embedding_service=self.embedding_service, **self.extractor_config
             )
         elif self.extractor_type == "hybrid":
@@ -60,44 +60,50 @@ class TopicExtractionService:
             )
         else:
             logging.warning(
-                f"Unknown extractor type: {self.extractor_type}, falling back to embedding_cluster"
+                f"Unknown extractor type: {self.extractor_type}, falling back to heuristic"
             )
-            return EmbeddingClusterExtractor(
+            return HeuristicExtractor(
                 embedding_service=self.embedding_service, **self.extractor_config
             )
 
     async def extract_topics(
-        self, workspace_id: int, concepts_data: List[Dict[str, Any]]
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+        self, workspace_id: int, file_data: List[Dict[str, Any]]
+    ) -> List[TopicArea]:
         """
-        Extract topic areas from concept data using the configured extractor.
+        Extract topic areas directly from file data using the configured extractor.
 
         Args:
             workspace_id: ID of the workspace
-            concepts_data: List of concept dictionaries
+            file_data: List of file dictionaries
 
         Returns:
-            Tuple of (topic_areas, concept_links)
+            List of discovered topic areas
         """
         logging.info(
-            f"Extracting topics for workspace {workspace_id} with {len(concepts_data)} concepts"
+            f"Extracting topics for workspace {workspace_id} with {len(file_data)} documents"
         )
 
         # Use the configured topic extractor
-        topic_areas, concept_links = await self.topic_extractor.extract_topics(
-            workspace_id, concepts_data
-        )
+        result = await self.topic_extractor.extract_topics(workspace_id, file_data)
 
-        # Calculate file counts for each topic area
+        # Handle both tuple and list returns
+        if isinstance(result, tuple):
+            topic_areas, _ = result
+        else:
+            topic_areas = result
+
+        # Calculate file counts and metrics for each topic area
         for topic_area in topic_areas:
-            topic_area.file_count = await self._get_topic_file_count(
-                workspace_id, topic_area.topic_area_id
+            # For topics-only architecture, file count is parsed from topic description or set to 0
+            topic_area.file_count = (
+                0  # Will be calculated by higher-level service if needed
             )
+            topic_area.explored_percentage = 0.0  # Topics start unexplored
 
         logging.info(
-            f"Extracted {len(topic_areas)} topic areas and {len(concept_links)} concept links for workspace {workspace_id}"
+            f"Extracted {len(topic_areas)} topic areas for workspace {workspace_id}"
         )
-        return topic_areas, concept_links
+        return topic_areas
 
     async def _get_topic_file_count(self, workspace_id: int, topic_area_id: str) -> int:
         """
