@@ -7,8 +7,12 @@ Manages incremental updates without full re-processing
 import os
 import json
 import hashlib
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
+
+# Configure package logger
+logger = logging.getLogger(__name__)
 
 
 class IncrementalIndexManager:
