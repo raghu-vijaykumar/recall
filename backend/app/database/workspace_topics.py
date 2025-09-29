@@ -52,7 +52,6 @@ class WorkspaceTopicsDatabase:
                     name=row.name,
                     description=row.description,
                     coverage_score=row.coverage_score,
-                    concept_count=row.concept_count,
                     file_count=row.file_count,
                     explored_percentage=row.explored_percentage,
                     created_at=row.created_at,
@@ -142,7 +141,6 @@ class WorkspaceTopicsDatabase:
                     user_id=row.user_id,
                     recommendation_type=row.recommendation_type,
                     topic_area_id=row.topic_area_id,
-                    concept_id=row.concept_id,
                     priority_score=row.priority_score,
                     reason=row.reason,
                     suggested_action=row.suggested_action,
@@ -151,88 +149,6 @@ class WorkspaceTopicsDatabase:
             )
 
         return recommendations
-
-    async def get_topic_area_concepts(self, topic_area_id: str) -> List[dict]:
-        """
-        Get all concepts associated with a specific topic area.
-
-        Args:
-            topic_area_id: ID of the topic area
-
-        Returns:
-            List of concepts with their relevance scores
-        """
-        query = text(
-            """
-            SELECT c.*, tcl.relevance_score, tcl.explored
-            FROM concepts c
-            JOIN topic_concept_links tcl ON c.concept_id = tcl.concept_id
-            WHERE tcl.topic_area_id = :topic_area_id
-            ORDER BY tcl.relevance_score DESC
-            """
-        )
-
-        result = await self.db.execute(query, {"topic_area_id": topic_area_id})
-        rows = result.fetchall()
-
-        concepts = []
-        for row in rows:
-            concepts.append(
-                {
-                    "concept_id": row.concept_id,
-                    "name": row.name,
-                    "description": row.description,
-                    "relevance_score": row.relevance_score,
-                    "explored": row.explored,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
-            )
-
-        return concepts
-
-    async def get_topic_area_files(self, topic_area_id: str) -> List[dict]:
-        """
-        Get all files that contain concepts from a specific topic area.
-
-        Args:
-            topic_area_id: ID of the topic area
-
-        Returns:
-            List of files with concept coverage information
-        """
-        query = text(
-            """
-            SELECT DISTINCT f.*, COUNT(cf.concept_id) as concept_count
-            FROM files f
-            JOIN concept_files cf ON f.id = cf.file_id
-            JOIN topic_concept_links tcl ON cf.concept_id = tcl.concept_id
-            WHERE tcl.topic_area_id = :topic_area_id
-            GROUP BY f.id
-            ORDER BY concept_count DESC
-            """
-        )
-
-        result = await self.db.execute(query, {"topic_area_id": topic_area_id})
-        rows = result.fetchall()
-
-        files = []
-        for row in rows:
-            files.append(
-                {
-                    "id": row.id,
-                    "workspace_id": row.workspace_id,
-                    "name": row.name,
-                    "path": row.path,
-                    "file_type": row.file_type,
-                    "size": row.size,
-                    "concept_count": row.concept_count,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
-            )
-
-        return files
 
     async def store_topic_area(self, topic_area: TopicArea) -> None:
         """Store a topic area in the database"""
@@ -259,27 +175,6 @@ class WorkspaceTopicsDatabase:
                 "explored_percentage": topic_area.explored_percentage,
                 "created_at": topic_area.created_at,
                 "updated_at": topic_area.updated_at,
-            },
-        )
-
-    async def store_concept_link(self, concept_link) -> None:
-        """Store a concept link in the database"""
-        query = text(
-            """
-            INSERT OR REPLACE INTO topic_concept_links
-            (topic_concept_link_id, topic_area_id, concept_id, relevance_score, explored)
-            VALUES (:id, :topic_area_id, :concept_id, :relevance_score, :explored)
-            """
-        )
-
-        await self.db.execute(
-            query,
-            {
-                "id": concept_link.topic_concept_link_id,
-                "topic_area_id": concept_link.topic_area_id,
-                "concept_id": concept_link.concept_id,
-                "relevance_score": concept_link.relevance_score,
-                "explored": concept_link.explored,
             },
         )
 

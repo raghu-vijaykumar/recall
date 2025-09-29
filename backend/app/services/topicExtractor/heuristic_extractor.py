@@ -5,13 +5,13 @@ Works directly with documents for heuristic topic discovery.
 """
 
 import math
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 import uuid
 
 from .base import BaseTopicExtractor
-from ...models import TopicArea, TopicConceptLink
+from ...models import TopicArea
 from ..embedding_service import EmbeddingService
 
 
@@ -46,10 +46,9 @@ class HeuristicExtractor(BaseTopicExtractor):
 
     async def extract_topics(
         self, workspace_id: int, documents_data: List[Dict[str, Any]]
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+    ) -> List[TopicArea]:
         """
         Extract topic areas directly from documents using heuristic embedding-based clustering.
-        Returns both topic areas and document links connecting documents to topic areas.
         """
         logging.info(
             f"Starting heuristic extraction for workspace {workspace_id} with {len(documents_data)} documents"
@@ -59,7 +58,7 @@ class HeuristicExtractor(BaseTopicExtractor):
             logging.warning(
                 f"Insufficient documents ({len(documents_data)}) for heuristic extraction, minimum required: {self.min_topic_concepts}"
             )
-            return [], []
+            return []
 
         logging.info(
             f"Preprocessing {len(documents_data)} documents for heuristic clustering"
@@ -73,7 +72,7 @@ class HeuristicExtractor(BaseTopicExtractor):
             return await self._create_fallback_topic_area(workspace_id, documents_data)
 
         # Use heuristic clustering based on semantic similarity
-        topic_areas, document_links = await self._heuristic_clustering(
+        topic_areas = await self._heuristic_clustering(
             workspace_id, processed_documents, documents_data
         )
 
@@ -93,16 +92,7 @@ class HeuristicExtractor(BaseTopicExtractor):
             f"After filtering, returning top {len(topic_areas)} topic areas (max allowed: {self.max_topic_areas})"
         )
 
-        # Filter document links to only include those for the selected topic areas
-        selected_topic_ids = {ta.topic_area_id for ta in topic_areas}
-        document_links = [
-            link for link in document_links if link.topic_area_id in selected_topic_ids
-        ]
-
-        logging.info(
-            f"Returning {len(topic_areas)} topic areas and {len(document_links)} document links"
-        )
-        return topic_areas, document_links
+        return topic_areas
 
     async def _preprocess_documents(
         self, documents_data: List[Dict[str, Any]]
@@ -154,10 +144,10 @@ class HeuristicExtractor(BaseTopicExtractor):
         workspace_id: int,
         processed_documents: List[Dict[str, Any]],
         original_documents: List[Dict[str, Any]],
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+    ) -> List[TopicArea]:
         """
         Heuristic clustering using embeddings and similarity-based approach.
-        Returns both topic areas and document links.
+        Returns topic areas only (topics-only architecture).
         """
         logging.info(
             f"Starting heuristic clustering for {len(processed_documents)} processed documents"
@@ -202,9 +192,8 @@ class HeuristicExtractor(BaseTopicExtractor):
             # Perform similarity clustering
             clusters = self._similarity_clustering(embeddings, processed_documents)
 
-            # Convert clusters to topic areas and document links
+            # Convert clusters to topic areas
             topic_areas = []
-            document_links = []
             for cluster_id, cluster_docs in clusters.items():
                 if len(cluster_docs) < self.min_topic_concepts:
                     continue
@@ -225,7 +214,6 @@ class HeuristicExtractor(BaseTopicExtractor):
                     name=topic_name,
                     description=topic_description,
                     coverage_score=min(1.0, avg_relevance),
-                    concept_count=len(cluster_docs),  # Documents treated as "concepts"
                     file_count=0,  # Will be set by service
                     explored_percentage=0.0,  # Will be calculated later
                     created_at=datetime.utcnow(),
@@ -233,28 +221,14 @@ class HeuristicExtractor(BaseTopicExtractor):
                 )
                 topic_areas.append(topic_area)
 
-                # Create document links for this topic area
-                for doc in cluster_docs:
-                    original_doc_data = doc["original_data"]
-                    concept_id = doc["id"]  # Use document ID
-
-                    link = TopicConceptLink(
-                        topic_concept_link_id=str(uuid.uuid4()),
-                        topic_area_id=topic_area_id,
-                        concept_id=concept_id,
-                        relevance_score=doc["relevance_score"],
-                        explored=False,  # Will be updated by service
-                    )
-                    document_links.append(link)
-
                 logging.info(
                     f"Created topic area '{topic_name}' with {len(cluster_docs)} documents"
                 )
 
             logging.info(
-                f"Created {len(topic_areas)} topic areas and {len(document_links)} document links through heuristic clustering"
+                f"Created {len(topic_areas)} topic areas through heuristic clustering"
             )
-            return topic_areas, document_links
+            return topic_areas
 
         except Exception as e:
             logging.error(
@@ -419,15 +393,18 @@ class HeuristicExtractor(BaseTopicExtractor):
         workspace_id: int,
         processed_documents: List[Dict[str, Any]],
         original_documents: List[Dict[str, Any]],
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+    ) -> List[TopicArea]:
         """Create a single general topic area as fallback"""
         logging.info(
             f"Creating single general topic area for workspace {workspace_id} with {len(processed_documents)} documents"
         )
 
-        avg_relevance = sum(
-            doc["relevance_score"] for doc in processed_documents
-        ) / len(processed_documents)
+        avg_relevance = (
+            sum(doc["relevance_score"] for doc in processed_documents)
+            / len(processed_documents)
+            if processed_documents
+            else 0
+        )
         logging.info(
             f"Calculated average relevance: {avg_relevance:.3f} for {len(processed_documents)} documents"
         )
@@ -439,33 +416,18 @@ class HeuristicExtractor(BaseTopicExtractor):
             name="General Documents",
             description=f"General topic area covering {len(processed_documents)} documents using heuristic extraction",
             coverage_score=min(1.0, avg_relevance),
-            concept_count=len(processed_documents),  # Documents as concepts
             file_count=0,
             explored_percentage=0.0,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
 
-        # Create document links for the general topic area
-        document_links = []
-        for doc in processed_documents:
-            link = TopicConceptLink(
-                topic_concept_link_id=str(uuid.uuid4()),
-                topic_area_id=topic_area_id,
-                concept_id=doc["id"],
-                relevance_score=doc["relevance_score"],
-                explored=False,  # Will be updated by service
-            )
-            document_links.append(link)
-
-        logging.info(
-            f"Created fallback topic area with {len(document_links)} document links"
-        )
-        return [topic_area], document_links
+        logging.info("Created fallback topic area")
+        return [topic_area]
 
     async def _create_fallback_topic_area(
         self, workspace_id: int, original_documents: List[Dict[str, Any]]
-    ) -> Tuple[List[TopicArea], List[TopicConceptLink]]:
+    ) -> List[TopicArea]:
         """Create a fallback topic when no documents can be processed"""
         logging.warning("Creating fallback topic area for unprocessed documents")
 
@@ -476,27 +438,13 @@ class HeuristicExtractor(BaseTopicExtractor):
             name="All Documents",
             description=f"Fallback topic area containing all {len(original_documents)} documents",
             coverage_score=0.5,  # Default score
-            concept_count=len(original_documents),
             file_count=0,
             explored_percentage=0.0,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
 
-        # Create links for all documents
-        document_links = []
-        for i, doc_data in enumerate(original_documents):
-            concept_id = doc_data.get("id") or f"doc_{i}"
-            link = TopicConceptLink(
-                topic_concept_link_id=str(uuid.uuid4()),
-                topic_area_id=topic_area_id,
-                concept_id=concept_id,
-                relevance_score=0.5,  # Default relevance
-                explored=False,
-            )
-            document_links.append(link)
-
-        return [topic_area], document_links
+        return [topic_area]
 
     def _generate_topic_name_from_documents(
         self, cluster_documents: List[Dict[str, Any]]

@@ -168,8 +168,10 @@ class LLMKnowledgeGraphBuilder(BaseKnowledgeGraphBuilder):
 
     def __init__(self, db: AsyncSession, llm_config: Optional[Dict[str, Any]] = None):
         super().__init__(db, llm_config)
-        self.llm_client = LLMClientFactory.create_client(
-            provider=self.llm_config.get("provider", "gemini"), **self.llm_config
+        from ..llm_clients import llm_client_factory
+
+        self.llm_client = llm_client_factory.get_client(
+            self.llm_config.get("provider", "gemini")
         )
 
     async def build_topic_relationships(
@@ -304,7 +306,6 @@ class LLMKnowledgeGraphBuilder(BaseKnowledgeGraphBuilder):
                     name=row.name,
                     description=row.description,
                     coverage_score=row.coverage_score,
-                    concept_count=row.concept_count,
                     file_count=row.file_count,
                     explored_percentage=row.explored_percentage,
                     created_at=row.created_at,

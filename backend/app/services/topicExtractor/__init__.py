@@ -3,13 +3,13 @@ Topic Extractor module for discovering topic areas in workspaces.
 """
 
 from .base import BaseTopicExtractor
-from .bertopic_extractor import BertTopicExtractor
-from .heuristic_extractor import HeuristicTopicExtractor
+from .bertopic_extractor import BERTopicExtractor
+from .heuristic_extractor import HeuristicExtractor
 from .service import TopicExtractionService
 
 __all__ = [
     "BaseTopicExtractor",
-    "BertTopicExtractor",
-    "HeuristicTopicExtractor",
+    "BERTopicExtractor",
+    "HeuristicExtractor",
     "TopicExtractionService",
 ]

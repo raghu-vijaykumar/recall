@@ -81,9 +81,9 @@ test:
 # Run backend tests only
 test-backend:
 ifdef BYPASS_COVERAGE
-	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear tests/ -v
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear tests/ --tb=short -v
 else
-	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear --cov=app --cov-fail-under=100 tests/ -v
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear --tb=short --cov=app --cov-fail-under=100 tests/ -v
 endif
 # Run frontend tests only
 test-frontend:

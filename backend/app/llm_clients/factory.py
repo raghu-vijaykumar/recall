@@ -32,6 +32,10 @@ class LLMClientFactory:
             api_key = llm_config.get_api_key(provider)
             # Pass all relevant config settings to the client
             provider_settings = llm_config._config.get(provider, {})
+            # Remove api_key from provider_settings to avoid duplicate argument
+            provider_settings = {
+                k: v for k, v in provider_settings.items() if k != "api_key"
+            }
             self._clients[provider] = client_class(api_key=api_key, **provider_settings)
         return self._clients[provider]
 

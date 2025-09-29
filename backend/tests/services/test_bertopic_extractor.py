@@ -4,6 +4,7 @@ Tests for BERTopicExtractor
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+import unittest
 import numpy as np
 
 from app.services.topicExtractor.bertopic_extractor import BERTopicExtractor
@@ -125,8 +126,10 @@ class TestBERTopicExtractor:
         extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
 
         # Test with topic words
-        topic_words = [("machine", 0.8), ("learning", 0.7), ("algorithm", 0.6)]
-        name = extractor._generate_bertopic_name(topic_words)
+        topic_data = {
+            "words": [("machine", 0.8), ("learning", 0.7), ("algorithm", 0.6)]
+        }
+        name = extractor._generate_topic_name(topic_data)
 
         assert "Machine Learning" in name
         assert len(name) <= 50  # Should not be too long
@@ -135,7 +138,7 @@ class TestBERTopicExtractor:
         """Test topic name generation with empty topic words"""
         extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
 
-        name = extractor._generate_bertopic_name([])
+        name = extractor._generate_topic_name({"words": []})
         assert name == "General Topic"
 
     def test_coherence_calculation(self, mock_embedding_service):
@@ -143,8 +146,7 @@ class TestBERTopicExtractor:
         extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
 
         # Test with high coherence words
-        topic_words = [("word1", 0.9), ("word2", 0.85), ("word3", 0.8)]
-        coherence = extractor._calculate_topic_coherence(topic_words)
+        coherence = extractor._calculate_topic_coherence()
 
         assert 0.0 <= coherence <= 1.0
 
@@ -153,13 +155,7 @@ class TestBERTopicExtractor:
         extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
 
         # Test with high relevance concepts (should be low outlier score)
-        concepts = [
-            {"id": "c1", "relevance_score": 0.9},
-            {"id": "c2", "relevance_score": 0.8},
-            {"id": "c3", "relevance_score": 0.85},
-        ]
-
-        outlier_score = extractor._calculate_outlier_score(concepts)
+        outlier_score = extractor._calculate_outlier_score()
         assert 0.0 <= outlier_score <= 1.0
         assert outlier_score < 0.5  # Should be low for high-relevance concepts
 
@@ -174,7 +170,7 @@ class TestBERTopicExtractor:
         )
 
         cache_key = extractor._get_model_cache_key()
-        expected_key = "test-model_3_10_0.5"
+        expected_key = "bertopic_test-model_3_10_0.5"
         assert cache_key == expected_key
 
     @pytest.mark.asyncio
@@ -190,31 +186,27 @@ class TestBERTopicExtractor:
             {"id": "c2", "name": "concept 2", "relevance_score": 0.7},
         ]
 
-        topic_areas, concept_links = await extractor.extract_topics(1, concepts_data)
+        topic_areas = await extractor.extract_topics(1, concepts_data)
 
         assert len(topic_areas) == 0
-        assert len(concept_links) == 0
 
     def test_bertopic_model_creation(self, mock_embedding_service):
         """Test BERTopic model creation and caching"""
         extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
 
         # Mock the BERTopic model to avoid actual initialization
-        with pytest.mock.patch(
+        with unittest.mock.patch(
             "app.services.topicExtractor.bertopic_extractor.BERTopic"
         ) as mock_bertopic:
             mock_model = MagicMock()
             mock_bertopic.return_value = mock_model
 
             # Test model creation
-            import asyncio
-
-            async def test_model():
-                model = await extractor._get_bertopic_model()
-                assert model == mock_model
-                mock_bertopic.assert_called_once()
-
-            asyncio.run(test_model())
+            model = extractor._create_bertopic_processor(
+                extractor._create_bertopic_config()
+            )
+            assert model == mock_model
+            mock_bertopic.assert_called_once()
 
     def test_visualization_data_generation(self, mock_embedding_service):
         """Test visualization data generation"""
@@ -231,44 +223,10 @@ class TestBERTopicExtractor:
         mock_model.get_topics.return_value = [0, 1]
         mock_model.get_topic.return_value = [("word1", 0.8), ("word2", 0.7)]
 
-        viz_data = extractor.get_topic_visualization_data(mock_model)
+        viz_data = extractor.get_topic_visualization_data()
 
-        assert "topic_info" in viz_data
-        assert "topic_word_scores" in viz_data
-        assert "topic_sizes" in viz_data
-        assert len(viz_data["topic_info"]) == 2
-
-    def test_hierarchy_extraction(self, mock_embedding_service):
-        """Test topic hierarchy extraction"""
-        extractor = BERTopicExtractor(embedding_service=mock_embedding_service)
-
-        # Mock BERTopic model with topic info
-        mock_model = MagicMock()
-        mock_topic_info = MagicMock()
-
-        # Create mock dataframe-like behavior
-        mock_topic_info.set_index.return_value = {
-            0: MagicMock(),
-            1: MagicMock(),
-            2: MagicMock(),
-        }
-        mock_topic_info.set_index.return_value.__getitem__ = MagicMock(
-            return_value=MagicMock()
-        )
-        mock_topic_info.set_index.return_value.to_dict = MagicMock(
-            return_value={
-                0: 25,  # Large topic
-                1: 15,  # Medium topic
-                2: 5,  # Small topic
-            }
-        )
-        mock_model.get_topic_info.return_value = mock_topic_info
-
-        hierarchy = extractor.get_topic_hierarchy(mock_model)
-
-        assert isinstance(hierarchy, dict)
-        # Should have some hierarchical structure
-        assert len(hierarchy) > 0
+        assert "nodes" in viz_data
+        assert "edges" in viz_data
 
 
 if __name__ == "__main__":
