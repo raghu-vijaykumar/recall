@@ -1,4 +1,4 @@
-.PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve
+.PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve lint-duplicates
 .ONESHELL:
 
 # Default target
@@ -12,6 +12,7 @@ help:
 	@echo "  clean      - Clean build artifacts"
 	@echo "  start      - Start development with process cleanup"
 	@echo "  install    - Full clean, rebuild, and install"
+	@echo "  lint-duplicates - Check for duplicate code blocks using pylint"
 	@echo "  wiki-build - Build the wiki documentation site"
 	@echo "  wiki-serve - Serve the wiki documentation site locally"
 	@echo "  help       - Show this help message"
@@ -141,6 +142,10 @@ kill:
 		) \
 	)
 	@echo Process cleanup complete
+
+# Check for duplicate code using pylint similarities
+lint-duplicates:
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && pylint --rcfile=.pylintrc app/
 
 # Build wiki documentation site
 wiki-build:

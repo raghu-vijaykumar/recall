@@ -1,0 +1,9 @@
+[MASTER]
+disable=all
+enable=duplicate-code,similarities
+
+[SIMILARITIES]
+ignore-imports=yes
+ignore-signatures=no
+min-similarity-lines=8
+similarity-threshold=85
