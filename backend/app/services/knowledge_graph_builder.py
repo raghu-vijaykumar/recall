@@ -17,7 +17,6 @@ from ..models import (
     WorkspaceTopicGraph,
 )
 from ..llm_clients import LLMClientFactory
-from .file_service import FileService
 
 
 class BaseKnowledgeGraphBuilder(ABC):
@@ -36,7 +35,6 @@ class BaseKnowledgeGraphBuilder(ABC):
         """
         self.db = db
         self.llm_config = llm_config or {}
-        self.file_service = FileService(db)
 
     @abstractmethod
     async def build_topic_relationships(

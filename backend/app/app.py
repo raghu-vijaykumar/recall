@@ -15,7 +15,6 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from app.routes.workspaces import router as workspaces_router
-from app.routes.files import router as files_router
 from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 from app.routes.search import router as search_router
@@ -79,7 +78,6 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Include routers
 app.include_router(workspaces_router, prefix="/api/workspaces", tags=["workspaces"])
-app.include_router(files_router, prefix="/api/files", tags=["files"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["quiz"])
 app.include_router(progress_router, prefix="/api/progress", tags=["progress"])
 app.include_router(search_router, prefix="/api/search", tags=["search"])
