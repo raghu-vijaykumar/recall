@@ -1,10 +1,21 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from backend.app.database import get_db, DATABASE_URL, engine, async_session
+from backend.app.services.database import (
+    get_db,
+    init_database_service,
+)
 
 
 class TestDatabase:
     """Test cases for database connection and session management."""
+
+    @pytest.fixture(autouse=True)
+    def setup_database_service(self):
+        """Set up database service for each test."""
+        import os
+
+        test_db_path = os.environ.get("DATABASE_PATH")
+        init_database_service(test_db_path)
 
     @pytest.mark.asyncio
     async def test_get_db_dependency(self):
@@ -20,16 +31,22 @@ class TestDatabase:
 
     def test_database_url_configuration(self):
         """Test that DATABASE_URL is properly configured."""
+        from backend.app.services.database import DATABASE_URL
+
         assert DATABASE_URL.startswith("sqlite+aiosqlite:///")
-        assert "recall.db" in DATABASE_URL
+        assert DATABASE_URL.endswith(".db")
 
     def test_engine_configuration(self):
         """Test that the async engine is properly configured."""
+        from backend.app.services.database import DATABASE_URL, engine
+
         assert engine is not None
         assert str(engine.url) == DATABASE_URL
 
     def test_async_session_factory(self):
         """Test that the async session factory is properly configured."""
+        from backend.app.services.database import async_session, engine
+
         assert async_session is not None
         assert async_session.kw["bind"] is engine
         assert async_session.class_ is not None

@@ -1,0 +1,102 @@
+{
+  "info": {
+    "name": "Recall API Tests",
+    "description": "Collection for testing Recall API endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "Get Workspaces",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/workspaces",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workspaces"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspace Topics",
+      "item": [
+        {
+          "name": "Analyze Workspace with Bertopic Extractor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/workspace-topics/analyze/1?extractor_type=bertopic",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workspace-topics", "analyze", "1"],
+              "query": [
+                {
+                  "key": "extractor_type",
+                  "value": "bertopic"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Analyze Workspace with Heuristic Extractor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/workspace-topics/analyze/1?extractor_type=heuristic",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workspace-topics", "analyze", "1"],
+              "query": [
+                {
+                  "key": "extractor_type",
+                  "value": "heuristic"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8080",
+      "type": "string"
+    }
+  ]
+}

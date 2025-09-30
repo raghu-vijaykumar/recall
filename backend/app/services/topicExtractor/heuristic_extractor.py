@@ -64,8 +64,11 @@ class HeuristicExtractor(BaseTopicExtractor):
             f"Preprocessing {len(documents_data)} documents for heuristic clustering"
         )
 
-        # Preprocess documents for topic extraction
-        processed_documents = await self._preprocess_documents(documents_data)
+        # Documents are assumed to be preprocessed by preprocessing service
+        # Just extract content for topic modeling
+        processed_documents = await self._extract_text_from_preprocessed_documents(
+            documents_data
+        )
 
         if not processed_documents:
             logging.warning("No documents could be processed, creating fallback topic")
@@ -93,6 +96,49 @@ class HeuristicExtractor(BaseTopicExtractor):
         )
 
         return topic_areas
+
+    async def _extract_text_from_preprocessed_documents(
+        self, documents_data: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract text and metadata from documents that have been preprocessed.
+        Assumes documents are already cleaned, filtered, and ready for topic modeling.
+        """
+        processed_docs = []
+
+        for idx, doc_data in enumerate(documents_data):
+            # Extract preprocessed text content (check multiple fields for compatibility)
+            content_fields = ["content", "text", "processed_text"]
+            text_content = ""
+            for field in content_fields:
+                candidate = doc_data.get(field, "").strip()
+                if candidate:
+                    text_content = candidate
+                    break
+
+            if not text_content:
+                logging.warning(
+                    f"No text content found in document {doc_data.get('id', idx)}"
+                )
+                continue
+
+            # Create document representation for clustering
+            processed_doc = {
+                "id": doc_data.get("id") or f"processed_doc_{idx}",
+                "text": text_content,
+                "word_count": len(text_content.split()),
+                "file_path": doc_data.get("file_path", ""),
+                "file_name": doc_data.get("file_name", ""),
+                "relevance_score": 1.0,  # Default relevance for preprocessed documents
+                "original_data": doc_data,  # Keep reference to original
+            }
+
+            processed_docs.append(processed_doc)
+
+        logging.info(
+            f"Extracted text from {len(processed_docs)} preprocessed documents"
+        )
+        return processed_docs
 
     async def _preprocess_documents(
         self, documents_data: List[Dict[str, Any]]

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import TopicArea
 from .topicExtractor.service import TopicExtractionService
+from .document_preprocessing import create_document_preprocessing_service
 from ..database.workspace_topics import WorkspaceTopicsDatabase
 
 
@@ -37,6 +38,7 @@ class WorkspaceAnalysisService:
             db=db, extractor_type=extractor_type, extractor_config=self.extractor_config
         )
         self.workspace_topics_db = WorkspaceTopicsDatabase(db)
+        self.preprocessing_service = create_document_preprocessing_service()
 
     def _read_file_content(self, file_path: Path) -> str:
         """Read file content with encoding handling"""
@@ -75,27 +77,29 @@ class WorkspaceAnalysisService:
         )
 
         try:
-            # Get file data from workspace
-            file_data = await self._get_workspace_file_data(
-                workspace_id, workspace_path
+            # Preprocess workspace files using the generic preprocessing service
+            processed_docs, file_metadata = (
+                await self.preprocessing_service.preprocess_workspace_files(
+                    workspace_path
+                )
             )
 
-            if not file_data:
+            if not processed_docs or not file_metadata:
                 return {
                     "workspace_id": workspace_id,
                     "files_analyzed": 0,
                     "topics_created": 0,
-                    "errors": ["No files found in workspace"],
+                    "errors": ["No files found or processed in workspace"],
                     "duration_seconds": 0.0,
                     "message": "No files found",
                 }
 
             # Extract topics using the topic extractor
             logging.info(
-                f"[TOPIC_ANALYSIS] Extracting topics from {len(file_data)} files"
+                f"[TOPIC_ANALYSIS] Extracting topics from {len(processed_docs)} processed documents"
             )
             topic_areas = await self.topic_service.extract_topics(
-                workspace_id, file_data
+                workspace_id, file_metadata
             )
 
             # Store topics in database
@@ -115,12 +119,12 @@ class WorkspaceAnalysisService:
 
             logging.info(
                 f"[TOPIC_ANALYSIS] Topic analysis completed for workspace {workspace_id} in {duration:.2f} seconds. "
-                f"Created {len(stored_topics)} topics from {len(file_data)} files."
+                f"Created {len(stored_topics)} topics from {len(processed_docs)} processed documents."
             )
 
             return {
                 "workspace_id": workspace_id,
-                "files_analyzed": len(file_data),
+                "files_analyzed": len(processed_docs),
                 "topics_created": len(stored_topics),
                 "errors": [],
                 "duration_seconds": duration,

@@ -22,6 +22,7 @@ from app.routes.workspace_topics import router as workspace_topics_router
 
 # Import migration service for test database setup
 from app.services.migration_service import MigrationService
+from app.services.database import init_database_service
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -85,7 +86,7 @@ def app():
 
 
 @pytest.fixture
-def client(app):
+def client(app, db_session):
     """Create a test client for the FastAPI app."""
     with TestClient(app) as test_client:
         yield test_client
@@ -96,6 +97,9 @@ def db_session():
     """Create a test database session factory with initialized schema."""
     # Get the test database path from environment
     db_path = os.environ.get("DATABASE_PATH", ":memory:")
+
+    # Initialize the global database service for dependency injection in FastAPI routes
+    init_database_service(db_path)
 
     # Initialize database with migrations
     migrations_dir = Path(__file__).parent.parent / "migrations"

@@ -3,7 +3,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import pytest
-from backend.app.utils.workspace_flattener import WorkspaceFlattener
+from backend.app.services.workspace_flattener import WorkspaceFlattener
 
 
 class TestWorkspaceFlattener:

@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import logging
+from sqlalchemy import text
 
-from ..database import get_db
+from ..services.database import get_db
 from ..database.workspace_topics import WorkspaceTopicsDatabase
 from ..models import (
     TopicArea,
@@ -17,7 +18,7 @@ from ..models import (
 )
 from ..services import WorkspaceAnalysisService
 
-router = APIRouter(prefix="/api/workspace-topics", tags=["workspace-topics"])
+router = APIRouter()
 
 
 @router.post("/analyze/{workspace_id}")
@@ -43,7 +44,7 @@ async def analyze_workspace_topics(
     try:
         # Get workspace path from database
         workspace_query = await db.execute(
-            "SELECT folder_path FROM workspaces WHERE id = :workspace_id",
+            text("SELECT folder_path FROM workspaces WHERE id = :workspace_id"),
             {"workspace_id": workspace_id},
         )
         workspace_record = workspace_query.fetchone()
@@ -68,6 +69,8 @@ async def analyze_workspace_topics(
         logging.info(f"Successfully completed analysis for workspace {workspace_id}")
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(
             f"Error analyzing workspace topics for workspace {workspace_id}: {e}"

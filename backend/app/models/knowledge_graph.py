@@ -20,6 +20,7 @@ class TopicAreaBase(BaseModel):
     coverage_score: float = Field(
         ..., description="How well this area is covered (0-1)"
     )
+    concept_count: int = Field(..., description="Number of concepts in this area")
     file_count: int = Field(..., description="Number of files covering this area")
     explored_percentage: float = Field(
         ..., description="Percentage of area explored (0-1)"

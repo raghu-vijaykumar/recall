@@ -11,7 +11,7 @@ from sqlalchemy import text
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
-from ..database import get_db
+from ..services.database import get_db
 from ..services import WorkspaceAnalysisService
 from ..services.embedding_service import EmbeddingService
 import os

@@ -18,7 +18,7 @@ from app.services.workspace_analysis_service import WorkspaceAnalysisService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import get_db from the database module
-from app.database import get_db
+from app.services.database import get_db
 
 # Create router
 router = APIRouter()

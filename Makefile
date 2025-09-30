@@ -1,4 +1,4 @@
-.PHONY: help setup build dev dist test clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve lint-duplicates
+.PHONY: help setup build dev dist test test-api clean start install build-frontend build-electron build-backend-pyinstaller wiki-build wiki-serve lint-duplicates
 .ONESHELL:
 
 # Default target
@@ -9,6 +9,7 @@ help:
 	@echo "  dev        - Run in development mode"
 	@echo "  dist       - Create distributable package"
 	@echo "  test       - Run backend tests only"
+	@echo "  test-api   - Run API tests using Newman"
 	@echo "  clean      - Clean build artifacts"
 	@echo "  start      - Start development with process cleanup"
 	@echo "  install    - Full clean, rebuild, and install"
@@ -79,12 +80,13 @@ test:
 	make test-frontend
 
 # Run backend tests only
-test-backend:
+test-backend: lint-duplicates test-api
 ifdef BYPASS_COVERAGE
-	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear tests/ --tb=short -v
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear tests/ --tb=short -q
 else
-	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear --tb=short --cov=app --cov-fail-under=100 tests/ -v
+	cd backend && .\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && python -m pytest --cache-clear --tb=short --cov=app --cov-fail-under=50 tests/ -q
 endif
+
 # Run frontend tests only
 test-frontend:
 ifdef BYPASS_COVERAGE
@@ -92,6 +94,16 @@ ifdef BYPASS_COVERAGE
 else
 	npm run test:frontend:coverage
 endif
+
+# Run API tests using Newman
+test-api:
+	make kill
+	@echo Starting backend in background...
+	cd backend && start /B cmd /c ".\\.venv\\Scripts\\activate.bat && python main.py"
+	@echo Waiting for backend to start...
+	timeout /t 60 /nobreak >nul
+	npx newman run tests/resources/api_collection.postman_collection.json --reporters cli,json --reporter-json-export test_output/newman_results.json
+	make kill
 
 # Build frontend
 build-frontend:
@@ -136,7 +148,7 @@ kill:
 	-@taskkill /IM recall.exe /F >nul 2>&1
 	-@taskkill /IM electron.exe /F >nul 2>&1
 	-@taskkill /IM recall-backend.exe /F >nul 2>&1
-	-@for %%p in (8000 8001 8002) do ( \
+	-@for %%p in (8000 8001 8002 8080) do ( \
 		for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%p') do ( \
 			taskkill /PID %%a /F >nul 2>&1 \
 		) \

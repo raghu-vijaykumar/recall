@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
-from ..database import get_db
+from ..services.database import get_db
 from ..services import QuizService
 from ..models import Question, Answer
 

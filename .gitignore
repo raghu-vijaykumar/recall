@@ -157,3 +157,4 @@ test_output/*
 prototype/bertopic/bertopic_results/*
 prototype/bertopic/results/*
 
+backend/test_output/*

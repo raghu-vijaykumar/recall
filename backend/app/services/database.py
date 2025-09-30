@@ -6,9 +6,12 @@ import sqlite3
 import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 import logging
 import os
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from .migration_service import MigrationService
 
@@ -26,6 +29,24 @@ class DatabaseService:
             )
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Initialize async SQLAlchemy components
+        database_url = f"sqlite+aiosqlite:///{self.db_path}"
+
+        # Create async engine
+        self.engine = create_async_engine(
+            database_url,
+            echo=False,  # Set to True for SQL query logging
+            future=True,
+        )
+
+        # Create async session factory
+        self.async_session = sessionmaker(
+            bind=self.engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
         self._init_db()
 
     def _init_db(self):
@@ -173,3 +194,59 @@ class DatabaseService:
     def rollback_migration(self, migration_id: str) -> bool:
         """Rollback a specific migration"""
         return self.migration_service.rollback_migration(migration_id)
+
+
+# Global database service instance for dependency injection
+# This will be initialized in app startup
+_db_service = None
+
+
+def init_database_service(db_path: str = None):
+    """Initialize the global database service instance"""
+    global _db_service
+    _db_service = DatabaseService(db_path)
+    # Update module-level exports for backward compatibility
+    _update_exports(_db_service)
+    return _db_service
+
+
+async def get_db() -> AsyncSession:
+    """
+    Dependency function to get database session for FastAPI routes
+    """
+    global _db_service
+    if _db_service is None:
+        raise RuntimeError(
+            "Database service not initialized. Call init_database_service() first."
+        )
+
+    async with _db_service.async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+# Export database components for backward compatibility (used by tests)
+DATABASE_URL = None
+engine = None
+async_session = None
+
+
+def _update_exports(db_service):
+    """Update module-level exports to point to the singleton instance"""
+    global DATABASE_URL, engine, async_session
+    DATABASE_URL = f"sqlite+aiosqlite:///{db_service.db_path}"
+    engine = db_service.engine
+    async_session = db_service.async_session
+
+
+# Export the database service class and functions
+__all__ = [
+    "DatabaseService",
+    "init_database_service",
+    "get_db",
+    "engine",
+    "async_session",
+    "DATABASE_URL",
+]

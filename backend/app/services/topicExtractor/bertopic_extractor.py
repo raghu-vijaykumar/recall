@@ -41,7 +41,7 @@ class BERTopicExtractor(BaseTopicExtractor):
         self,
         # BERTopic-specific parameters
         model_name: str = "all-MiniLM-L6-v2",
-        min_topic_size: int = 3,
+        min_topic_size: int = 5,
         max_topic_areas: int = 20,
         nr_topics: Optional[int] = None,  # Auto-determined if None
         diversity: Optional[float] = None,  # Control topic diversity
@@ -128,35 +128,60 @@ class BERTopicExtractor(BaseTopicExtractor):
             )
             return []
 
-        # Extract document texts
-        document_texts = await self._extract_document_texts(file_data)
-        logging.info(
-            f"Extracted {len(document_texts)} document texts for BERTopic processing"
+        # Documents are assumed to be preprocessed by preprocessing service
+        # Extract text content from preprocessed data
+        document_texts, valid_metadata = (
+            await self._extract_text_from_preprocessed_documents(file_data)
         )
 
-        if len(document_texts) < self.min_topic_concepts:
-            logging.warning("No valid document texts found after extraction")
+        if not document_texts or len(document_texts) < self.min_topic_concepts:
+            logging.warning("No valid preprocessed documents found after extraction")
             return []
 
         # Create and fit BERTopic processor
+        logging.info("[DEBUG] Creating BERTopic configuration...")
         config = self._create_bertopic_config()
+        logging.info("[DEBUG] Creating BERTopic processor...")
         processor = self._create_bertopic_processor(config)
 
         try:
-            # Process documents with BERTopic
+            # Add timeout and progress tracking
+            logging.info(
+                f"[DEBUG] Starting BERTopic fit_transform on {len(document_texts)} documents..."
+            )
+            import time
+
+            start_time = time.time()
+
+            # Process documents with BERTopic - use fit_transform instead of process_documents
             logging.info("Processing documents with BERTopic...")
-            topics, probs = processor.process_documents(document_texts)
+
+            # Add progress callback if possible
+            topics, probs = processor.fit_transform(document_texts)
+
+            processing_time = time.time() - start_time
+            logging.info(
+                f"[DEBUG] BERTopic processing completed in {processing_time:.2f} seconds"
+            )
+            logging.info(
+                f"[DEBUG] Topics shape: {topics.shape if hasattr(topics, 'shape') else len(topics) if topics is not None else 'None'}"
+            )
+            logging.info(
+                f"[DEBUG] Probabilities shape: {probs.shape if hasattr(probs, 'shape') else len(probs) if probs is not None else 'None'}"
+            )
 
             # Get topic information
-            all_topics = processor.get_topics()
-            topic_info = processor.get_statistics()
+            all_topics = processor.get_topics()  # Dict: {topic_id: [(word, prob), ...]}
+            topic_info_df = (
+                processor.get_topic_info()
+            )  # DataFrame with Topic, Count, Name, etc.
             logging.info(
-                f"BERTopic found {len(all_topics)} topics from {topic_info.get('total_documents', 0)} documents"
+                f"BERTopic found {len(all_topics)} topics from {len(document_texts)} documents"
             )
 
             # Convert to our format
             topic_areas = await self._convert_bertopic_results_to_areas(
-                all_topics, topics, probs, file_data, workspace_id
+                all_topics, topic_info_df, topics, probs, file_data, workspace_id
             )
 
             # Filter and rank topics by quality
@@ -176,11 +201,53 @@ class BERTopicExtractor(BaseTopicExtractor):
             logging.info("Falling back to basic clustering approach")
             return await self._fallback_clustering(workspace_id, file_data)
 
+    async def _extract_text_from_preprocessed_documents(
+        self, documents_data: List[Dict[str, Any]]
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+        """
+        Extract text content from preprocessed documents for BERTopic processing.
+
+        Args:
+            documents_data: List of preprocessed document dictionaries
+
+        Returns:
+            Tuple of (document_texts, valid_metadata)
+        """
+        document_texts = []
+        valid_metadata = []
+
+        for doc_data in documents_data:
+            # Extract preprocessed text content (check multiple fields for compatibility)
+            content_fields = ["content", "text", "processed_text"]
+            text_content = ""
+            for field in content_fields:
+                candidate = doc_data.get(field, "").strip()
+                if candidate:
+                    text_content = candidate
+                    break
+
+            if text_content:
+                # Ensure reasonable length (BERTopic performs better with reasonable document sizes)
+                max_chars = 50000  # Limit to prevent memory issues in BERTopic
+                if len(text_content) > max_chars:
+                    text_content = text_content[:max_chars]
+                    logging.debug(
+                        f"Truncated document {doc_data.get('id', 'unknown')} to {max_chars} characters for BERTopic"
+                    )
+
+                document_texts.append(text_content)
+                valid_metadata.append(doc_data)
+
+        logging.info(
+            f"Extracted {len(document_texts)} valid document texts from {len(documents_data)} preprocessed documents for BERTopic"
+        )
+        return document_texts, valid_metadata
+
     async def _extract_document_texts(
         self, documents_data: List[Dict[str, Any]]
     ) -> List[str]:
         """
-        Extract document texts from documents data.
+        Extract document texts from documents data with preprocessing.
 
         Args:
             documents_data: List of document dictionaries with 'content' field
@@ -193,12 +260,8 @@ class BERTopicExtractor(BaseTopicExtractor):
         for doc_data in documents_data:
             # Extract content field
             content = doc_data.get("content", "").strip()
-            if content:
-                document_texts.append(content)
-
-            # Alternative: if content is not available, try other fields
-            else:
-                # Try alternative field names that might contain text
+            if not content:
+                # Alternative: if content is not available, try other fields
                 alt_content = (
                     doc_data.get("text")
                     or doc_data.get("body")
@@ -206,12 +269,67 @@ class BERTopicExtractor(BaseTopicExtractor):
                     or ""
                 ).strip()
                 if alt_content:
-                    document_texts.append(alt_content)
+                    content = alt_content
 
-        # Remove empty or very short documents
-        document_texts = [doc for doc in document_texts if len(doc.split()) >= 3]
+            if content:
+                # Apply preprocessing similar to prototype
+                content = self._preprocess_document_content(content, doc_data)
+                if content:  # Only add if preprocessing didn't filter it out
+                    document_texts.append(content)
+
+        logging.info(
+            f"[DEBUG] After preprocessing: {len(document_texts)} documents from {len(documents_data)} files"
+        )
 
         return document_texts
+
+    def _preprocess_document_content(
+        self, content: str, doc_data: Dict[str, Any]
+    ) -> str:
+        """
+        Preprocess document content similar to prototype app.
+
+        Args:
+            content: Raw document content
+            doc_data: Document metadata
+
+        Returns:
+            Preprocessed content or empty string if filtered out
+        """
+        # 1. Basic length filtering
+        if len(content.split()) < 3:
+            return ""
+
+        # 2. Size limits (avoid extremely large documents that cause memory issues)
+        max_chars = 50000  # Similar to workspace_analysis_service.py
+        if len(content) > max_chars:
+            logging.warning(
+                f"[DEBUG] Truncating document {doc_data.get('name', 'unknown')} from {len(content)} to {max_chars} chars"
+            )
+            content = content[:max_chars]
+
+        # 3. Filter by content type - avoid binary-looking content
+        # Check if content has too many non-text characters
+        text_chars = sum(
+            1 for c in content if c.isalnum() or c.isspace() or c in ".,!?;:"
+        )
+        text_ratio = text_chars / len(content) if content else 0
+
+        if text_ratio < 0.7:  # Less than 70% text characters, likely binary
+            logging.debug(
+                f"[DEBUG] Filtering out likely binary content for {doc_data.get('name', 'unknown')} (text ratio: {text_ratio:.2f})"
+            )
+            return ""
+
+        # 4. Remove excessive whitespace
+        import re
+
+        content = re.sub(r"\s+", " ", content.strip())
+
+        # 5. Limit to reasonable document count for BERTopic (prevents memory issues)
+        # This will be handled at a higher level, but individual doc limit is good too
+
+        return content
 
     def _create_bertopic_config(self) -> "TopicModelingConfig":
         """Create BERTopic configuration from extractor parameters."""
@@ -270,7 +388,8 @@ class BERTopicExtractor(BaseTopicExtractor):
 
     async def _convert_bertopic_results_to_areas(
         self,
-        all_topics: Dict[int, Dict[str, Any]],
+        all_topics: Dict[int, List[Tuple[str, float]]],
+        topic_info_df: Any,  # pandas DataFrame
         topics: List[int],
         probs: np.ndarray,
         file_data: List[Dict[str, Any]],
@@ -279,24 +398,31 @@ class BERTopicExtractor(BaseTopicExtractor):
         """Convert BERTopic results to TopicArea format."""
         topic_areas = []
 
-        for topic_id, topic_data in all_topics.items():
+        # Process each row in the topic info DataFrame
+        for _, row in topic_info_df.iterrows():
+            topic_id = int(row["Topic"])
+
             if topic_id == -1:  # Skip outliers
                 continue
 
             # Get document count for this topic
-            doc_count = topic_data.get("count", 0)
+            doc_count = int(row["Count"])
             if doc_count < self.min_topic_concepts:
                 continue
 
-            # Create topic name and description
-            topic_name = self._generate_topic_name_from_bertopic(topic_data)
+            # Get topic name (automatically generated by BERTopic)
+            topic_name = str(row["Name"]).strip()
+
+            # Get top words from all_topics dict
+            topic_words = all_topics.get(topic_id, [])
+
+            # Create topic description
             topic_description = self._generate_topic_description_from_bertopic(
-                topic_data
+                {"name": topic_name, "count": doc_count, "words": topic_words}
             )
 
-            # Calculate coverage score based on topic attributes
-            topic_words = topic_data.get("words", [])
-            coverage_score = min(1.0, len(topic_words) / 10.0)  # Simple heuristic
+            # Calculate coverage score based on document count and words
+            coverage_score = min(1.0, (len(topic_words) + doc_count) / 20.0)
 
             # Create topic area
             topic_area = TopicArea(
@@ -315,7 +441,7 @@ class BERTopicExtractor(BaseTopicExtractor):
             # Add metadata
             topic_area._bertopic_metadata = {
                 "topic_id": topic_id,
-                "topic_words": topic_words,
+                "top_words": topic_words,
             }
 
             topic_areas.append(topic_area)
@@ -418,34 +544,13 @@ class BERTopicExtractor(BaseTopicExtractor):
             logging.error(f"Fallback clustering failed: {e}")
             return []
 
-    # Old concept-based methods removed:
-    # - _prepare_documents (concepts_data based)
-    # - _get_concept_context (concept-specific)
-
-    # Old concept-based methods removed:
-    # - _prepare_documents (concepts_data based)
-    # - _get_concept_context (concept-specific)
-    # - _get_bertopic_model (old caching method)
-    # - _get_model_cache_key (old caching key)
-
-    # Old concept-based methods removed:
-    # - _prepare_documents (concepts_data based)
-    # - _get_concept_context (concept-specific)
-    # - _get_bertopic_model (old caching method)
-    # - _get_model_cache_key (old caching key)
-    # - _convert_bertopic_results (old concept-based conversion)
-    # - _generate_bertopic_name (old naming method)
-    # - _generate_bertopic_description (old description method)
-    # - _calculate_topic_coherence (unused coherence calculation)
-    # - _calculate_outlier_score (unused outlier calculation)
-    # - _filter_and_rank_topics (old version with bertopic_model parameter)
-    # - _fallback_clustering (old concepts_data version)
-    # - get_topic_visualization_data (unused visualization method)
-    # - get_topic_hierarchy (unused hierarchy method)
-
-    async def _prepare_documents(self, concepts_data: List[Dict[str, Any]]) -> List[str]:
+    async def _prepare_documents(
+        self, concepts_data: List[Dict[str, Any]]
+    ) -> List[str]:
         """Prepare documents for BERTopic processing (compatibility method for tests)."""
-        logging.warning("_prepare_documents is deprecated, use extract_topics with file_data")
+        logging.warning(
+            "_prepare_documents is deprecated, use extract_topics with file_data"
+        )
         # Simple fallback: extract raw concepts as documents if needed
         document_texts = []
         for concept in concepts_data:
